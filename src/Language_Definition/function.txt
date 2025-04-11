@@ -1,0 +1,24 @@
+#Declare 4 function to perform simple calculation and return an integer
+num left = 4;
+num right = 10;
+
+func num addition(num a, num b){
+    return a + b;
+}
+
+func num subtraction(num a, num b){
+    return a - b;
+}
+
+func num multiplication(num a, num b){
+    return a * b;
+}
+
+func num division(num a, num b){
+    return a / b;
+}
+
+result(addition(left, right));
+result(subtraction(left, right));
+result(multiplication(left, right));
+result(division(left, right));

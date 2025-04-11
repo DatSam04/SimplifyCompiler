@@ -1,0 +1,21 @@
+# use dict keyword to declare a dictionary
+# dictionary contain key(String) and value(any data type) separated by colon
+# each key-value pair is separated by a comma
+dict security = {
+    "username": "Testing",
+    "password": "123456",
+    "email": "chat@yahoo.com",
+    "phone": 2495129403
+}
+
+#updateSecurity will add or update current key and return nothing
+func void updateSecurity(String key, String newValue){
+    if(security[key] == null){
+        result("Add new key-value to security");
+    }else{
+        result("Update " + key + " key");
+    }
+    security[key] = newValue;
+}
+
+updateSecurity("password", "5809125");

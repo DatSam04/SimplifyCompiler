@@ -1,0 +1,20 @@
+str name = "Mike"
+str brand = "KitKat"
+
+#Use if statement to print different text to console base on the condition
+#or keyword is used to perform additional condition
+# and both if and or statement must end with exist key word
+if(name == "Michael") exist {
+    result(name + " is a great designer");
+}or(name == "Mike") exist{
+    result(name + " is a great teacher");
+}else{
+    result(name + " is an unknown person");
+}
+
+#else statement is always required
+if(brand == "KitKat") exist {
+    result(brand + " is my favorite chocolate");
+}else{
+    result(brand + " is not my favorite chocolate");
+}

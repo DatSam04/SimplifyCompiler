@@ -1,0 +1,13 @@
+#to declare a variable, you need to specific the data type associate with it
+#You can initialize a variable without value and assign a value to it later.
+str myVar = "";
+arr[str] table;
+
+myVar = "this is the first variable";
+table.add(myVar);
+
+if(table.length < 2) exist{
+    result("This is a unique table");
+}else{
+    result("Your table shouldn't have that much information");
+}

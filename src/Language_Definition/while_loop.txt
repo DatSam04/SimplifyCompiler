@@ -1,0 +1,11 @@
+#counter function using while loop to count down the time and return a text string
+func str counter(num time){
+    w_loop(time to 0) exist{
+        result("Current time: " + time);
+    }
+    return "Time up!";
+}
+
+num matchTime = 120;
+result("Match start");
+counter(60);

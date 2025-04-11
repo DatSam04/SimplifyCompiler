@@ -1,0 +1,13 @@
+#Use class keyword to create a class, and each class will have a default constructor
+class mySchool{
+    arr[num] scores;
+    arr[str] classes;
+    bool enrolled;
+
+    #The constructor will initialize all variables with empty values
+    func void constructor(){
+        scores = [];
+        classes = [];
+        enrolled = False;
+    }
+}
