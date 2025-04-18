@@ -1,5 +1,5 @@
-str name = "Mike"
-str brand = "KitKat"
+str name = "Mike";
+str brand = "KitKat";
 
 #Use if statement to print different text to console base on the condition
 #or keyword is used to perform additional condition

@@ -9,5 +9,6 @@ class mySchool{
         scores = [];
         classes = [];
         enrolled = False;
+        return;
     }
 }

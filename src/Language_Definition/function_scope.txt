@@ -1,13 +1,14 @@
 # Variables outside the function can be access and modify inside the function
 # but variable inside the function can't be access or modify outside the function
 str school = "Seattle University";
-result(school) #print Seattle University
+result(school); #print Seattle University
 
 func void mySchool(){
-    result(school) #print Seattle University
+    result(school); #print Seattle University
     str school = "Seattle College";
-    result(school) #print Seattle College;
+    result(school); #print Seattle College;
+    return;
 }
 
 mySchool();
-result(school) #Seattle University;
+result(school); #Seattle University;

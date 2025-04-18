@@ -1,6 +1,2 @@
 # Use (#) to write a single-line comments
-#m Use (#m) to start writing multi-line comments and end it with (/m)
-    This is a hash value used to encode your password
-    It will secure your password from cyber attack
-/m
-str hash = "35Di15PW63209F"
+str hash = "35Di15PW63209F";

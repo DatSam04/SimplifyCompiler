@@ -9,13 +9,14 @@ dict security = {
 }
 
 #updateSecurity will add or update current key and return nothing
-func void updateSecurity(String key, String newValue){
-    if(security[key] == null){
+func void updateSecurity(str key1, str newValue){
+    if(security[key1] == null) exist{
         result("Add new key-value to security");
     }else{
-        result("Update " + key + " key");
+        result("Update " + key1 + " key");
     }
-    security[key] = newValue;
+    security[key1] = newValue;
+    return;
 }
 
 updateSecurity("password", "5809125");

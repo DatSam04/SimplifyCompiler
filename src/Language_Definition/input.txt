@@ -1,19 +1,22 @@
 #User readInput() keyword to read user input from console
 dict info = {
-    "Username": "";
-    "Password": "";
-    "Email": "";
-};
+    "Username": "",
+    "Password": "",
+    "Email": ""
+}
 
-func void signUp(){
+func void signUp() {
     str userInput;
     result("Welcome to Simplify");
-    f_loop(num i = 0 to info.length) exist{ //length method return the size of the dictionary
+    #length method return the size of the dictionary
+    f_loop(num i = 0 to info.length()) exist {
+        #info.key() return an array of all keys
         str curKey = info.key()[i];
-        result("Please enter your " + info.key()[i]); //info.key() return an array of all keys
+        result("Please enter your " + info.key()[i]);
         str userInput = readInput();
         info[curKey] = userInput;
     }
+    return;
 }
 
 signUp();
