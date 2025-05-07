@@ -1,0 +1,70 @@
+#Declaration testing
+str s;
+s = "Test";
+s = ["Hello", "Next", "Trying"];
+s = 15;
+arr[num] = ["one", 2, 3.5];
+
+#Assign wrong type to array element
+str s;
+s = "Test";
+arr[str] names;
+names = ["Alice", "Bob", 50, True, 2.5, "Brad"];
+names[0] = 5;
+
+#Testing type in index and assigned value in array and dictionary
+arr[num] scores;
+scores = [100, 95, "Test"];
+scores["first"] = 90;
+scores[1] = 105;
+
+dict grades;
+grades = {"math": 95, "science": 100, "Test": "Tomorrow"};
+grades[1] = 100;
+grades["science"] = 85;
+
+# Semantic analysis with function, redeclare function in the same scope
+str first;
+func str hello(str name){
+    str last = "Griffen";
+    num age = 10;
+    age = "12";
+    return last + name;
+}
+
+func num hello(){
+    return 5;
+}
+
+func str host(){
+    str last = "Griffen";
+    first = "Muffy";
+    age = 14;
+    return first;
+}
+
+#Semantic Analysis with class
+class hope{
+
+}
+
+class people{
+    str first;
+    str last;
+    num age;
+
+    func str person(str name){
+        str first;
+        first = "Raven";
+        return first + last;
+    }
+}
+
+class account{
+    str first;
+    str last;
+    func str owner(str real){
+        first = real;
+        return first;
+    }
+}

@@ -3,11 +3,11 @@
 str school = "Seattle University";
 result(school); #print Seattle University
 
-func void mySchool(){
+func str mySchool(){
     result(school); #print Seattle University
     str school = "Seattle College";
     result(school); #print Seattle College;
-    return;
+    return "";
 }
 
 mySchool();

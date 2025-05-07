@@ -3,9 +3,9 @@ dict info = {
     "Username": "",
     "Password": "",
     "Email": ""
-}
+};
 
-func void signUp() {
+func str signUp() {
     str userInput;
     result("Welcome to Simplify");
     #length method return the size of the dictionary
@@ -16,7 +16,7 @@ func void signUp() {
         str userInput = readInput();
         info[curKey] = userInput;
     }
-    return;
+    return "";
 }
 
 signUp();
