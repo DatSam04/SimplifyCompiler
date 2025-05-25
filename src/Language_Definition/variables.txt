@@ -5,6 +5,7 @@ arr[str] table;
 
 myVar = "this is the first variable";
 table.add(myVar);
+table2.add(2);
 
 if(table.size() < 2) exist{
     result("This is a unique table");

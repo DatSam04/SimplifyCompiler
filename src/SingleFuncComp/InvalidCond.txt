@@ -1,0 +1,21 @@
+str s = "Hello";
+
+bool met = False;
+
+if(2.2 < 2) exist{
+    num a = 2;
+}else{
+    num b = 3;
+}
+
+dec score = 2.2 + 3.1;
+
+if("2 == 4") exist{
+    str i = "NE";
+}or(4) exist{
+    str j = "GT";
+}or(2.2 - 4) exist{
+    str k = "LT";
+}else{
+    str n = "Neither";
+}

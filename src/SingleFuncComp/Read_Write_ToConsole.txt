@@ -1,0 +1,7 @@
+str s = "Hello";
+
+result(s);
+
+s = readInput("");
+
+result(s);

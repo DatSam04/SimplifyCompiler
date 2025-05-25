@@ -1,0 +1,12 @@
+num i = 0;
+
+w_loop(i to 10) exist{
+    str name = "Mike";
+    i = i + 1;
+}
+
+num s = 2;
+
+w_loop(s to 10) exist{
+    result("Running while loop");
+}

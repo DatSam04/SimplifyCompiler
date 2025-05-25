@@ -1,0 +1,17 @@
+num a = 2;
+if(a < 4) exist{
+    result("Hello");
+}else{
+    result("World");
+}
+
+num b = 4;
+if(b >= 5) exist{
+    result("Text");
+}or(b < 2) exist{
+    result("Home");
+}else{
+    num s;
+}
+result("End");
+

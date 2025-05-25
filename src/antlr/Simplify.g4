@@ -52,8 +52,17 @@ Number: '-'?[0-9]+;
 Decimal: '-'?[0-9]+ '.' [0-9]+;
 String: '"' .*? '"';            //String literal (must start and end with double quotation marks)
 Ws: [ \t\n\r]+ -> skip;
-ASSIGN: '=' | '-=' | '+=' | '*=' | '/=';
 SEMI: ';';
+
+//Comparison operator
+EQ: '==';
+NE: '!=';
+GT: '>';
+GE: '>=';
+LT: '<';
+LE: '<=';
+
+ASSIGN: '=' | '-=' | '+=' | '*=' | '/=';
 
 //Numerical operator
 MUL: '*';
@@ -61,11 +70,9 @@ DIV: '/';
 PLUS: '+';
 MINUS: '-';
 
-//Comparison operator
-CompOp: '==' | '!=' | '>' | '>=' | '<' | '<=';
-
 //Boolean operator
-BoolOp: '&' | '|';
+AND: '&';
+OR: '|';
 
 
 //Comments format
@@ -99,55 +106,51 @@ type
     | Dict                      #DictType
     ;
 //Declare a variable with specific data types
-declaration: type ID (ASSIGN initializer)? SEMI;
-
-initializer:  elementList | itemList | expression;
-
-elementList: '[' (expression (',' expression)*)? ']';
-
-//format for item(key & value) inside dictionary
-itemList: '{' (keyValuePair (',' keyValuePair)*)? '}';
-
-keyValuePair: String ':' expression;
+declaration: type ID (ASSIGN expression)? SEMI;
 
 //Assign or modify value of existing variable
 assignment: ID ('[' expression ']')? ASSIGN expression SEMI;   //assign new value to a variable, element in an array, or to an item in a dictionary
 
 expression
-    : expression '[' expression ']'                                    #indexAccessExpr
-    | expression '.' methodName '(' expression? ')'                    #methodCallExpr
-    | '[]'                                                             #emptyArrExpr
-    | '[' expression (',' expression)* ']'                             #arrExpr
-    | '{}'                                                             #emptyDictExpr
-    | '{' String ': ' expression (',' String ': ' expression)* '}'     #dictExpr
-    | ID                                                               #idExpr
-    | Number                                                           #numberExpr
-    | Decimal                                                          #decimalExpr
-    | String                                                           #stringExpr
-    | funcExpr                                                         #functionExpr
-    | readInputExpr                                                    #readExpr
-    | expression (MUL | DIV) expression                                #numOpExpr
-    | expression PLUS expression                                       #numOpExpr
-    | expression MINUS expression                                      #numOpExpr
-    | expression CompOp expression                                     #compOpExpr
-    | expression BoolOp expression                                     #boolOpExpr
-    | True                                                             #trueExpr
-    | False                                                            #falseExpr
-    | '(' expression ')'                                               #parenExpr
+    : expression '[' expression ']'                                         #indexAccessExpr
+    | expression '.' methodName '(' expression? ')'                         #methodCallExpr
+    | '[]'                                                                  #emptyArrExpr
+    | '[' expression (',' expression)* ']'                                  #arrExpr
+    | '{}'                                                                  #emptyDictExpr
+    | '{' expression ':' expression (',' expression ':' expression)* '}'    #dictExpr
+    | ID                                                                    #idExpr
+    | Number                                                                #numberExpr
+    | Decimal                                                               #decimalExpr
+    | String                                                                #stringExpr
+    | funcExpr                                                              #functionExpr
+    | readInputExpr                                                         #readExpr
+    | left=expression (MUL | DIV) right=expression                          #numOpExpr
+    | left=expression PLUS right=expression                                 #numOpExpr
+    | left=expression MINUS right=expression                                #numOpExpr
+    | left=expression compOp right=expression                               #compOpExpr
+    | left=expression boolOp right=expression                               #boolOpExpr
+    | True                                                                  #trueExpr
+    | False                                                                 #falseExpr
+    | '(' expression ')'                                                    #parenExpr
     ;
 
 methodName: ArrMethod | DictMethod | StrMethod;
 
+compOp: EQ | NE | GT | GE | LT | LE;
+
+boolOp: AND | OR;
+
 //conditional statement
 //If conditional statement must have else statement
-conditional: ifBlock block (orBlock block)* Cond_Else block;
-ifBlock: Cond_If '(' expression ')' Exist;
-orBlock: Cond_Or '(' expression ')' Exist;
+conditional: ifBlock (orBlock)* elseBlock;
+ifBlock: Cond_If '(' expression ')' Exist block;
+orBlock: Cond_Or '(' expression ')' Exist block;
+elseBlock: Cond_Else block;
 
-loop
-    : F_Loop '(' Num ID ASSIGN Number To expression ')' Exist block  #fLoop
-    | W_Loop '(' ID To expression ')' Exist block                      #whLoop
-    ;
+loop: forLoop | whileLoop;
+
+forLoop: F_Loop '(' type ID ASSIGN Number To expression ')' Exist block;
+whileLoop: W_Loop '(' ID To expression ')' Exist block;
 
 //format for conditional statement and loop
 block: '{' statement* '}';
@@ -171,4 +174,4 @@ classProperty: declaration* function*;
 
 result: Output '(' expression ')' SEMI;
 
-readInputExpr: Input '(' ')' SEMI?;
+readInputExpr: Input '(' String ')' SEMI?;
