@@ -1,2 +1,0 @@
-# Use (#) to write a single-line comments
-str hash = "35Di15PW63209F";

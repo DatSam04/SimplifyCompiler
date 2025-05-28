@@ -86,8 +86,11 @@ program: statement+ EOF;
 comments: SingleLineComment | MultiLineComment;
 
 statement: funcExpr
-        | assignment
         | classInit
+        | innerStatement
+        ;
+
+innerStatement: assignment
         | comments
         | conditional
         | declaration
@@ -112,7 +115,7 @@ declaration: type ID (ASSIGN expression)? SEMI;
 assignment: ID ('[' expression ']')? ASSIGN expression SEMI;   //assign new value to a variable, element in an array, or to an item in a dictionary
 
 expression
-    : expression '[' expression ']'                                         #indexAccessExpr
+    : ID '[' expression ']'                                                 #indexAccessExpr
     | expression '.' methodName '(' expression? ')'                         #methodCallExpr
     | '[]'                                                                  #emptyArrExpr
     | '[' expression (',' expression)* ']'                                  #arrExpr
@@ -153,13 +156,13 @@ forLoop: F_Loop '(' type ID ASSIGN Number To expression ')' Exist block;
 whileLoop: W_Loop '(' ID To expression ')' Exist block;
 
 //format for conditional statement and loop
-block: '{' statement* '}';
+block: '{' innerStatement* '}';
 
 //expression for calling function that can pass 0 or more values to the function arguments
 funcExpr: ID '(' (expression (',' expression)*)? ')' SEMI?;
 
 //Format for defining a function with 0 or more arguments
-function: Func type ID '(' (argumentList)? ')' '{' (statement)* returnStatement '}';
+function: Func type ID '(' (argumentList)? ')' '{' (innerStatement)* returnStatement '}';
 
 argumentList: argument (',' argument)*;
 
@@ -170,7 +173,7 @@ returnStatement: Return expression? SEMI;
 //Rule for defining class
 classInit: Class ID '{' classProperty '}';
 
-classProperty: declaration* function*;
+classProperty: (declaration | assignment)* function*;
 
 result: Output '(' expression ')' SEMI;
 

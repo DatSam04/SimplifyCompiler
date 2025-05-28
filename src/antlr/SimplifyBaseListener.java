@@ -53,6 +53,18 @@ public class SimplifyBaseListener implements SimplifyListener {
 	 *
 	 * <p>The default implementation does nothing.</p>
 	 */
+	@Override public void enterInnerStatement(SimplifyParser.InnerStatementContext ctx) { }
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The default implementation does nothing.</p>
+	 */
+	@Override public void exitInnerStatement(SimplifyParser.InnerStatementContext ctx) { }
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The default implementation does nothing.</p>
+	 */
 	@Override public void enterStrType(SimplifyParser.StrTypeContext ctx) { }
 	/**
 	 * {@inheritDoc}

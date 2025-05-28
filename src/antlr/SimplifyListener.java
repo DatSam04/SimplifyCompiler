@@ -38,6 +38,16 @@ public interface SimplifyListener extends ParseTreeListener {
 	 */
 	void exitStatement(SimplifyParser.StatementContext ctx);
 	/**
+	 * Enter a parse tree produced by {@link SimplifyParser#innerStatement}.
+	 * @param ctx the parse tree
+	 */
+	void enterInnerStatement(SimplifyParser.InnerStatementContext ctx);
+	/**
+	 * Exit a parse tree produced by {@link SimplifyParser#innerStatement}.
+	 * @param ctx the parse tree
+	 */
+	void exitInnerStatement(SimplifyParser.InnerStatementContext ctx);
+	/**
 	 * Enter a parse tree produced by the {@code StrType}
 	 * labeled alternative in {@link SimplifyParser#type}.
 	 * @param ctx the parse tree
