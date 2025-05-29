@@ -1,15 +1,15 @@
-str name = "Mike";
+num a = 4;
 str brand = "KitKat";
 
 #Use if statement to print different text to console base on the condition
 #or keyword is used to perform additional condition
 # and both if and or statement must end with exist key word
-if(name == "Michael") exist {
-    result(name + " is a great designer");
-}or(name == "Mike") exist{
-    result(name + " is a great teacher");
+if(a == 6) exist {
+    result("Mike is a great designer");
+}or(a < 5) exist{
+    result("Mike is a great teacher");
 }else{
-    result(name + " is an unknown person");
+    result("Mike is an unknown person");
 }
 
 #else statement is always required

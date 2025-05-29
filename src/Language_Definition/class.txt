@@ -5,10 +5,15 @@ class mySchool{
     bool enrolled;
 
     #The constructor will initialize all variables with empty values
-    func str mySchool(){
+    func str School(){
         scores = [];
         classes = [];
         enrolled = False;
+
+        str a = "Hello World";
+        result(a);
+
+        dec b = 2.2 - 2.4;
         return "Add new school";
     }
 }

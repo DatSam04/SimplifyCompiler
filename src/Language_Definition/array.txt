@@ -6,10 +6,10 @@ points[4] = 10; #[5,10,6,4,10,2]
 points.add(17); #[5,10,6,4,10,2,17]
 
 #addPoints function use add(expression) method to add new element to the array
-func dict addPoints(num newPoint){
+func num addPoints(num newPoint){
     points.add(newPoint);
     result("Add points");
-    return points;
+    return newPoint;
 }
 
 f_loop(num i = 0 to 6) exist{
@@ -19,3 +19,6 @@ f_loop(num i = 0 to 6) exist{
         result("Next points");
     }
 }
+
+#Invalid array
+arr[num] s = [2, 4.5, "Str", 5];

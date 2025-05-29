@@ -2,7 +2,7 @@
 # String, Integer, Float, and Boolean
 str name = "John";
 num x = 10;
-dec y = 10.5
+dec y = 10.5;
 bool comp = True;
 
 result(name);
@@ -10,6 +10,3 @@ result(x);
 result(y);
 result(comp);
 result(test);
-
-x = 1.5 @ x;
-str text = "Infinite string;

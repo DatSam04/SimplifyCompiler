@@ -116,7 +116,7 @@ assignment: ID ('[' expression ']')? ASSIGN expression SEMI;   //assign new valu
 
 expression
     : ID '[' expression ']'                                                 #indexAccessExpr
-    | expression '.' methodName '(' expression? ')'                         #methodCallExpr
+    | ID '.' methodName '(' expression? ')'                                 #methodCallExpr
     | '[]'                                                                  #emptyArrExpr
     | '[' expression (',' expression)* ']'                                  #arrExpr
     | '{}'                                                                  #emptyDictExpr
