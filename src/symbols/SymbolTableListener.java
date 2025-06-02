@@ -37,7 +37,8 @@ public class SymbolTableListener extends SimplifyBaseListener {
             }
             if(!(ctx.expression() == null)){
                 if(!(ctx.expression() instanceof SimplifyParser.ArrExprContext)
-                && !(ctx.expression() instanceof SimplifyParser.EmptyArrExprContext)){
+                && !(ctx.expression() instanceof SimplifyParser.EmptyArrExprContext)
+                && !(ctx.expression() instanceof SimplifyParser.MethodCallExprContext)){
                     SemanticErrorListener.report("Semantic Error at line " + line + ": value mismatch type, array variable only accepts array value \"[value]\"");
                     return;
                 }else if(ctx.expression() instanceof SimplifyParser.ArrExprContext){
@@ -170,7 +171,7 @@ public class SymbolTableListener extends SimplifyBaseListener {
             SemanticErrorListener.report("Semantic Error at line " + ctx.start.getLine() + ": Type mismatch in numerical operation: Expected 'num' and 'dec' but found '" + leftType + "' and '" + rightType + "'");
         }
 
-        if(!leftType.equals(rightType)){
+        if(!leftType.equals(rightType) && !isConcatenate){
             SemanticErrorListener.report("Semantic Error at line " + ctx.start.getLine() + ": Type mismatch in numerical operation : can't perform operation between " + leftType + " and " + rightType);
         }
     }
@@ -219,8 +220,8 @@ public class SymbolTableListener extends SimplifyBaseListener {
 
         if (arraySymbol == null) {
             SemanticErrorListener.report("Semantic Error at line " + ctx.start.getLine() + ": variable '" + arrayName + "' used before declaration");
+            return;
         }
-
         String indexType = expressionType(ctx.expression());
         if (arraySymbol.getType().startsWith("arr")) {
             if (!indexType.equals("num")) {
@@ -243,9 +244,14 @@ public class SymbolTableListener extends SimplifyBaseListener {
             return;
         }
         String declaredType = symbol.type;
+        String valaueType = declaredType;
+
+        if(symbol.type.startsWith("arr")){
+            valaueType = declaredType.substring(4, declaredType.length() - 1);
+        }
 
         String assignSymbol = ctx.ASSIGN().getText();
-        if(!assignSymbol.equals("=") && !(declaredType.equals("num") || declaredType.equals("dec"))) {
+        if(!assignSymbol.equals("=") && !(valaueType.equals("num") || valaueType.equals("dec"))) {
             SemanticErrorListener.report("Semantic Error at line " + ctx.start.getLine() + ": assigned symbol('" + assignSymbol +"') only support 'num' or 'dec' variable");
             return;
         }
@@ -331,16 +337,20 @@ public class SymbolTableListener extends SimplifyBaseListener {
             SimplifyParser.IndexAccessExprContext curExpr = (SimplifyParser.IndexAccessExprContext) ctx;
             String varName = curExpr.ID().getText();
             Symbol sym = findSymbol(varName);
-            if(sym.type.startsWith("arr")){
-                return sym.type.substring(4, sym.type.length() - 1);
+            if(sym != null){
+                if(sym.type.startsWith("arr")){
+                    return sym.type.substring(4, sym.type.length() - 1);
+                }
+                Map<String, String> curDict = dictTable.get(varName);
+                String valueType = curDict.get(curExpr.expression().getText());
+                if(valueType == null){
+                    return "Invalid";
+                }
+                return valueType;
             }
-            Map<String, String> curDict = dictTable.get(varName);
-            String valueType = curDict.get(curExpr.expression().getText());
-            if(valueType == null){
-                return "Invalid";
-            }
-            return valueType;
+            return "undefined";
         }else if(ctx instanceof SimplifyParser.MethodCallExprContext){
+            System.out.println("Method: " + ctx.getText());
             SimplifyParser.MethodCallExprContext curExpr = (SimplifyParser.MethodCallExprContext) ctx;
             String varName = curExpr.ID().getText();
             if(findSymbol(varName) == null){
@@ -360,11 +370,13 @@ public class SymbolTableListener extends SimplifyBaseListener {
                     return "Invalid";
                 }
             }else if(sym.type.equals("dict")){
+                System.out.println("Dict Method: " + sym);
                 String exprType = switch(method){
                     case "size" -> "num";
                     case "key", "value" -> "arr";
                     default -> "Invalid";
                 };
+                System.out.println("Type: " + exprType);
                 return exprType;
             }else{
                 SemanticErrorListener.report("Semantic Error at line " + ctx.start.getLine() + ": there is not built-in method for '" + sym.type + "'");
@@ -497,7 +509,6 @@ public class SymbolTableListener extends SimplifyBaseListener {
 
         Symbol curSymbol = currentScope.resolve(idNode.getText());
         if(curSymbol != null){
-            System.out.println(curSymbol.getType());
             if(!curSymbol.getType().equals("num")){
                 SemanticErrorListener.report("Semantic Error at line " + ctx.start.getLine() + ": While loop requires a 'num' value for condition but found '" + curSymbol.getType() + "'" + " variable");
             }
@@ -547,19 +558,18 @@ public class SymbolTableListener extends SimplifyBaseListener {
                 currentScope.define(new Symbol(argName, argType));  // Add parameter to local scope
             }
         }
-
-        SimplifyParser.ReturnStatementContext returnStatement = (SimplifyParser.ReturnStatementContext) ctx.returnStatement();
-        if(returnStatement.expression() != null){
-            String returnExprType = expressionType(returnStatement.expression());
-            String returnType = ctx.type().getText();
-            if(!returnType.equals(returnExprType)){
-                SemanticErrorListener.report("Semantic Error at line " + line + ": Return type mismatch: expected '" + returnType + "' but found '" + returnExprType + "'");
-            }
-        }
     }
 
     @Override
     public void exitFunction(SimplifyParser.FunctionContext ctx) {
+        SimplifyParser.ReturnStatementContext returnStatement = ctx.returnStatement();
+        if(returnStatement.expression() != null){
+            String returnExprType = expressionType(returnStatement.expression());
+            String returnType = ctx.type().getText();
+            if(!returnType.equals(returnExprType)){
+                SemanticErrorListener.report("Semantic Error at line " + ctx.start.getLine() + ": Return type mismatch: expected '" + returnType + "' but found '" + returnExprType + "'");
+            }
+        }
         currentScope = currentScope.getEnclosingScope(); // Exit function scope
     }
 
