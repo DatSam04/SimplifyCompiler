@@ -23,7 +23,6 @@ public class SimplifyCompiler extends SimplifyBaseListener {
     private CtClass ctClass = cp.makeClass("Main");
     private ClassFile cf = ctClass.getClassFile();
     private ConstPool constPool = cf.getConstPool();
-    private MethodInfo mainMethodInfo;
     private Bytecode code = new Bytecode(constPool, 1, 1);
 
     //Field for managing variable
@@ -44,7 +43,7 @@ public class SimplifyCompiler extends SimplifyBaseListener {
     Stack<Integer> loopStartOffsets = new Stack<>();
     Stack<Integer> loopExitJumps = new Stack<>();
 
-    //Field for array
+    //Field for generate bytecode base on array type
     String curElementType = "str";
 
     //Main method to generate the java class file
@@ -148,12 +147,11 @@ public class SimplifyCompiler extends SimplifyBaseListener {
         if(exprCtx != null){
             //Compile Array variable
             String exprType = getExprType(exprCtx);
-            if(exprCtx instanceof SimplifyParser.EmptyArrExprContext
-            || exprCtx instanceof SimplifyParser.EmptyDictExprContext){
+            if(exprCtx instanceof SimplifyParser.EmptyArrExprContext){
                 curElementType = type.substring(4, type.length() - 1);
                 localVarType.put(id, type);
                 localVarIndex.put(id, nextLocalIndex);
-                varValues.put(id, null);
+                varValues.put(id, new ArrayList<>());
                 generateExpr(exprCtx);
                 return;
             }else if(exprCtx instanceof SimplifyParser.ArrExprContext arrExprCtx){
@@ -994,11 +992,21 @@ public class SimplifyCompiler extends SimplifyBaseListener {
                     System.err.println("Type mismatch in 'add' method: you can only add '" + elemType + "' to '" + varName);
                     return null;
                 }
-                ArrayList<Object> value = new ArrayList<>((ArrayList<Object>) curValue);
+                ArrayList<Object> value;
+                if(curValue.equals(null)){
+                    value = new ArrayList<>();
+                }else{
+                    value = new ArrayList<>((ArrayList<Object>) curValue);
+                }
                 value.add(methodCtx.expression().getText());
                 varValues.put(varName, value);
             }else if(methodName.equals("rm")){
-                ArrayList<Object> value = new ArrayList<>((ArrayList<Object>) curValue);
+                ArrayList<Object> value;
+                if(curValue.equals(null)){
+                    value = new ArrayList<>();
+                }else{
+                    value = new ArrayList<>((ArrayList<Object>) curValue);
+                }
                 int index = Integer.parseInt(methodCtx.expression().getText());
                 if(index >= 0 && index < value.size()){
                     value.remove(index);
@@ -1006,7 +1014,6 @@ public class SimplifyCompiler extends SimplifyBaseListener {
                     throw new IndexOutOfBoundsException("Index " + index + " is out of bounds");
                 }
                 varValues.put(varName, value);
-                System.out.println(varValues);
             }else if(methodName.equals("key")){
                 Map<String, Object> curDict = (Map<String, Object>) curValue;
                 ArrayList<String> keys = new ArrayList<>(curDict.keySet());
