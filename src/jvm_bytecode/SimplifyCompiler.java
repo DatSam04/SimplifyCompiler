@@ -5,10 +5,12 @@ import antlr.SimplifyParser;
 import javassist.ClassPool;
 import javassist.CtClass;
 import javassist.bytecode.*;
+import org.antlr.v4.runtime.Parser;
 import org.antlr.v4.runtime.ParserRuleContext;
 import org.antlr.v4.runtime.tree.ParseTree;
 
-import java.awt.*;
+import javax.naming.NameNotFoundException;
+import java.lang.reflect.Array;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -125,6 +127,18 @@ public class SimplifyCompiler extends SimplifyBaseListener {
     }
 
     @Override
+    public void enterInnerStatement(SimplifyParser.InnerStatementContext ctx) {
+        if(ctx.expression() != null){
+            SimplifyParser.ExpressionContext curExpr = (SimplifyParser.ExpressionContext) ctx.expression();
+            if(curExpr instanceof SimplifyParser.MethodCallExprContext methodExpr){
+                getExprType(methodExpr); //Check if the current type has this built-in method
+                evaluateExpr(methodExpr); //Perform action to local variable
+                generateExpr(methodExpr); //Generate JVM bytecode
+            }
+        }
+    }
+
+    @Override
     public void enterDeclaration(SimplifyParser.DeclarationContext ctx) {
         if(!canEmit) return; //Prevent emit bytecode in conditional statement
         String type = ctx.type().getText();
@@ -146,28 +160,30 @@ public class SimplifyCompiler extends SimplifyBaseListener {
                 //Check if assigned value match with declared element type
                 String elemType = type.substring(4, type.length() - 1);
                 curElementType = elemType;
+                ArrayList<Object> values = new ArrayList<>();
                 for(SimplifyParser.ExpressionContext element : arrExprCtx.expression()){
                     if(!elemType.equals(getExprType(element))){
                         System.err.println("Type mismatch in declaration of '" + id + "' array: expected " + elemType + ", found " + getExprType(element));
                         return;
                     }
+                    values.add(parseExprAsObject(element, elemType));
                 }
 
                 //Add variable to localVarTable
                 localVarType.put(id, type);
                 localVarIndex.put(id, nextLocalIndex);
-                varValues.put(id, null);
+                varValues.put(id, values);
 
                 //generate Bytecode
                 generateExpr(exprCtx);
                 return;
             }
-
             //Check if the assigned value has same type as variable
             if(!type.equals(exprType)){
                 System.err.println("Type mismatch in declaration of '" + id + "': expected " + type + ", found " + exprType);
                 return;
             }
+            //Compile constant variable
             varValues.put(id, evaluateExpr(exprCtx));
             generateExpr(exprCtx);
         }else{
@@ -181,6 +197,7 @@ public class SimplifyCompiler extends SimplifyBaseListener {
             case "num", "bool" -> code.addIstore(index);
             case "dec" -> code.addDstore(index);
             case "str" -> code.addAstore(index);
+            case "arr[str]" -> code.addAstore(index);
             default -> System.err.println("Unsupported type in declaration: " + type);
         }
         if(type.equals("dec")){
@@ -465,6 +482,7 @@ public class SimplifyCompiler extends SimplifyBaseListener {
             case "dec" -> code.addInvokevirtual("java/io/PrintStream", "println", "(D)V");
             case "bool" -> code.addInvokevirtual("java/io/PrintStream", "println", "(Z)V");
             case "str" -> code.addInvokevirtual("java/io/PrintStream", "println", "(Ljava/lang/String;)V");
+            case "arr[str]", "arr[num]", "arr[dec]", "arr[bool]" -> code.addInvokevirtual("java/io/PrintStream", "println", "(Ljava/lang/Object;)V");
             default -> System.err.println("Unsupported type for result: " + exprType);
         }
     }
@@ -485,7 +503,7 @@ public class SimplifyCompiler extends SimplifyBaseListener {
             code.addIconst(1);
         }else if(ctx instanceof SimplifyParser.FalseExprContext){
             code.addIconst(0);
-        }else if(ctx instanceof SimplifyParser.IdExprContext idCtx){ 
+        }else if(ctx instanceof SimplifyParser.IdExprContext idCtx){
             String idName = idCtx.getText();
             int index = localVarIndex.get(idName);
             String type = localVarType.get(idName);
@@ -493,6 +511,7 @@ public class SimplifyCompiler extends SimplifyBaseListener {
                 case "num", "bool" -> code.addIload(index);
                 case "dec" -> code.addDload(index);
                 case "str" -> code.addAload(index);
+                case "arr[str]", "arr[num]", "arr[dec]", "arr[bool]" -> code.addAload(index);
                 default -> System.err.println("Unsupported type for expression: " + type);
             }
         }else if(ctx instanceof SimplifyParser.NumOpExprContext numOpCtx){
@@ -688,7 +707,6 @@ public class SimplifyCompiler extends SimplifyBaseListener {
         }else if(ctx instanceof SimplifyParser.EmptyArrExprContext || ctx instanceof SimplifyParser.ArrExprContext){
             generateArray(ctx);
         }else if(ctx instanceof SimplifyParser.MethodCallExprContext methodCtx){
-            System.out.println("Method Expression");
             generateMethodExpr(methodCtx);
         }
     }
@@ -763,23 +781,65 @@ public class SimplifyCompiler extends SimplifyBaseListener {
     private void generateMethodExpr(SimplifyParser.MethodCallExprContext ctx){
         String idName = ctx.ID().getText();
         String idType = localVarType.get(idName);
+        int index = localVarIndex.get(idName);
         String methodName = ctx.methodName().getText();
-        List<String> arrMethod = new ArrayList<>(Arrays.asList("addI", "rm", "size"));
-        List<String> dictMethod = new ArrayList<>(Arrays.asList("addItem", "rmItem", "key", "value", "size"));
-        if(idType.equals("str")){
-            System.out.println("String method: " + ctx.getText());
+        List<String> arrMethod = new ArrayList<>(Arrays.asList("add", "rm", "size"));
+        List<String> dictMethod = new ArrayList<>(Arrays.asList("addItem", "rmItem", "key", "size"));
+
+        code.addAload(index);
+        if(idType.equals("str")){ //String method
             if(!methodName.equals("length")){
-                System.err.println("String does not support '" + methodName + "' built-in method");
+                throw new IllegalArgumentException("String Method 'length' cannot be called on variable '" + idName + "' of type " + idType);
             }
-        }else if(idType.equals("dict")){
-            System.out.println("Dict method: " + ctx.getText());
+            code.addInvokevirtual("java/lang/String", "length", "()I");
+        }else if(idType.equals("dict")){ //Dictionary method
             if(!dictMethod.contains(methodName)){
-                System.err.println("Dictionary does not support '" + methodName + "' built-in method");
+                throw new IllegalArgumentException("Dictionary Method '" + methodName +"' cannot be called on variable '" + idName + "' of type " + idType);
             }
-        }else{
-            System.out.println("Array method: " + ctx.getText());
+
+            if(methodName.equals("size")){
+                code.addInvokevirtual("java/util/HashMap", "size", "()I");
+            }else if(methodName.equals("key")){
+                code.addInvokeinterface("java/util/Map", "keySet", "()Ljava/util/Set", 1);
+                code.addInvokespecial("java/util/ArrayList", "<init>", "(Ljava/util/Collection;)V");
+            }
+        }else{ //Array method
             if(!arrMethod.contains(methodName)){
-                System.err.println("Array does not support '" + methodName + "' built-in method");
+                throw new IllegalArgumentException("Array Method '" + methodName +"' cannot be called on variable '" + idName + "' of type " + idType);
+            }
+
+            if(methodName.equals("size")){
+                code.addInvokevirtual("java/util/ArrayList", "size", "()I");
+            }else if(methodName.equals("add")){
+                String exprType = getExprType(ctx.expression());
+                String exprText = ctx.expression().getText();
+                switch(exprType){
+                    case "str":
+                        code.addLdc(exprText.substring(1, exprText.length() - 1));
+                        break;
+                    case "num":
+                        int number = Integer.parseInt(exprText);
+                        code.addIconst(number);
+                        code.addInvokestatic("java/lang/Integer", "valueOf", "(I)Ljava/lang/Integer;");
+                        break;
+                    case "dec":
+                        double decimal = Double.parseDouble(exprText);
+                        code.addLdc2w(decimal);
+                        code.addInvokestatic("java/lang/Double", "valueOf", "(D)Ljava/lang/Double;");
+                        break;
+                    case "bool":
+                        boolean boolValue = Boolean.parseBoolean(ctx.expression().getText());
+                        code.addIconst(boolValue ? 1 : 0);
+                        code.addInvokestatic("java/lang/Boolean", "valueOf", "(Z)Ljava/lang/Boolean;");
+                        break;
+                }
+                code.addInvokevirtual("java/util/ArrayList", "add", "(Ljaava/lang/Object;)Z");
+                code.addOpcode(Opcode.POP);
+            }else if(methodName.equals("rm")){
+                int elemIndex = Integer.parseInt((ctx.expression().getText()));
+                code.addIconst(elemIndex);
+                code.addInvokevirtual("java/util/ArrayList","remove","(I)Ljava/lang/Object;");
+                code.addOpcode(Opcode.POP);
             }
         }
     }
@@ -812,6 +872,7 @@ public class SimplifyCompiler extends SimplifyBaseListener {
     }
 
     //Generate actual value of expr not writing bytecode
+    @SuppressWarnings("unchecked") //Suppress unchecked warning in copy value from varValues<String,Object>
     private Object evaluateExpr(SimplifyParser.ExpressionContext ctx){
         if(ctx instanceof SimplifyParser.NumberExprContext){
             return Integer.parseInt(ctx.getText());
@@ -910,8 +971,50 @@ public class SimplifyCompiler extends SimplifyBaseListener {
             }
         }else if(ctx instanceof SimplifyParser.ReadExprContext){
             return "";
+        }else if(ctx instanceof SimplifyParser.MethodCallExprContext methodCtx){
+            String varName = methodCtx.ID().getText();
+            Object curValue = varValues.get(varName);
+            String methodName = methodCtx.methodName().getText();
+
+            String idType = localVarType.get(varName);
+
+            if(methodName.equals("length")){
+                return curValue.toString().length();
+            }else if(methodName.equals("size")){
+                //Return array or dict size
+                if (curValue.getClass().isArray()) {
+                    return Array.getLength(curValue);
+                } else if (curValue instanceof Map<?, ?>) {
+                    return ((Map<?, ?>) curValue).size();
+                }
+            }else if(methodName.equals("add")){
+                String elemType = idType.substring(4, idType.length() - 1);
+                String exprType = getExprType(methodCtx.expression());
+                if(!exprType.equals(elemType)){
+                    System.err.println("Type mismatch in 'add' method: you can only add '" + elemType + "' to '" + varName);
+                    return null;
+                }
+                ArrayList<Object> value = new ArrayList<>((ArrayList<Object>) curValue);
+                value.add(methodCtx.expression().getText());
+                varValues.put(varName, value);
+            }else if(methodName.equals("rm")){
+                ArrayList<Object> value = new ArrayList<>((ArrayList<Object>) curValue);
+                int index = Integer.parseInt(methodCtx.expression().getText());
+                if(index >= 0 && index < value.size()){
+                    value.remove(index);
+                }else{
+                    throw new IndexOutOfBoundsException("Index " + index + " is out of bounds");
+                }
+                varValues.put(varName, value);
+                System.out.println(varValues);
+            }else if(methodName.equals("key")){
+                Map<String, Object> curDict = (Map<String, Object>) curValue;
+                ArrayList<String> keys = new ArrayList<>(curDict.keySet());
+                return keys;
+            }
+            return null;
         }else{
-            throw new RuntimeException("Unsupported expression type: " + ctx.getClass());
+            throw new UnsupportedOperationException("Unsupported expression type: " + ctx.getClass());
         }
     }
 
@@ -957,8 +1060,55 @@ public class SimplifyCompiler extends SimplifyBaseListener {
             }else{
                 return leftType;
             }
+        }else if(ctx instanceof SimplifyParser.MethodCallExprContext methodCtx){
+            String varName = methodCtx.ID().getText();
+            //Check if variable is declared
+            if(localVarIndex.get(varName) == null){
+                throw new IllegalStateException ("Undeclared variable: " + varName);
+            }
+            String method = methodCtx.methodName().getText();
+            String type = localVarType.get(varName);
+            if(method.equals("length")){ //String method
+                if(!type.equals("str")){
+                    throw new IllegalArgumentException("String Method 'length' cannot be called on variable '" + varName + "' of type " + type);
+                }
+                return "num";
+            }else if(method.equals("size")){ //process size method for array and dictionary
+                if(!type.equals("dict") || !type.startsWith("arr")){
+                    throw new IllegalArgumentException("Complex type Method '" + method +"' cannot be called on variable '" + varName + "' of type " + type);
+                }
+                return "num";
+            }else if(method.equals("key")){//process key method for dictionary
+                if(!type.equals("dict")){
+                    throw new IllegalArgumentException("Dictionary Method '" + method +"' cannot be called on variable '" + varName + "' of type " + type);
+                }
+                return "arr[str]";
+            }else{ //Return invalid for other methods because they didn't return value
+                ParserRuleContext parent = methodCtx.getParent();
+                if(parent instanceof SimplifyParser.InnerStatementContext){
+                    return null;
+                }
+                System.err.println("'" + method + "' method doesn't return a value");
+                return "Invalid";
+            }
         }else {
             return "Invalid";
+        }
+    }
+
+    private Object parseExprAsObject(SimplifyParser.ExpressionContext ctx, String elemType){
+        String text = ctx.getText();
+        switch(elemType){
+            case "str":
+                return text;
+            case "num":
+                return Integer.parseInt(text);
+            case "dec":
+                return Double.parseDouble(text);
+            case "bool":
+                return Boolean.parseBoolean(text);
+            default:
+                throw new RuntimeException("Unsupported element type in array: " + elemType);
         }
     }
 

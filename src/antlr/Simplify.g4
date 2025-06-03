@@ -26,7 +26,7 @@ StrMethod: 'length';
 
 ArrMethod: 'add' | 'rm' | Size;
 
-DictMethod: 'addItem' | 'rmItem' | 'key' | 'value' | Size;
+DictMethod: 'addItem' | 'rmItem' | 'key' | Size;
 
 //Type
 Str: 'str';
