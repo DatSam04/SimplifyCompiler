@@ -45,11 +45,15 @@ public class SimplifyCompiler extends SimplifyBaseListener {
 
     //Field for generate bytecode base on array type
     String curElementType = "str";
+    int curIndex = 0;
+
+    //Field for generate bytecode for dictionary item
+    String dictVar = "";
 
     //Main method to generate the java class file
     public void generateClass(){
         try{
-            if(code.getSize() == 0){
+            if(code.getSize() == 0 && localVarIndex.size() == 0){
                 code = defaultProgram();
             }else{
                 code.addOpcode(Bytecode.RETURN);
@@ -142,43 +146,75 @@ public class SimplifyCompiler extends SimplifyBaseListener {
         if(!canEmit) return; //Prevent emit bytecode in conditional statement
         String type = ctx.type().getText();
         String id = ctx.ID().getText();
+        curIndex = nextLocalIndex;
+        //Check if variable exist
+        if(localVarIndex.containsKey(id)){
+            System.err.println("Redeclared variable " + id + " in the same scope");
+            return;
+        }
+
         SimplifyParser.ExpressionContext exprCtx = ctx.expression();
         //Generate expr bytecode if existed
         if(exprCtx != null){
             //Compile Array variable
             String exprType = getExprType(exprCtx);
             if(exprCtx instanceof SimplifyParser.EmptyArrExprContext){
+                //compare declared variable type with expr type
+                if(!CompareType(type, exprType, id)){
+                    return;
+                }
                 curElementType = type.substring(4, type.length() - 1);
                 localVarType.put(id, type);
-                localVarIndex.put(id, nextLocalIndex);
+                localVarIndex.put(id, nextLocalIndex++);
                 varValues.put(id, new ArrayList<>());
                 generateExpr(exprCtx);
                 return;
             }else if(exprCtx instanceof SimplifyParser.ArrExprContext arrExprCtx){
+                //compare declared variable type with expr type
+                if(!CompareType(type, exprType, id)){
+                    return;
+                }
                 //Check if assigned value match with declared element type
                 String elemType = type.substring(4, type.length() - 1);
                 curElementType = elemType;
                 ArrayList<Object> values = new ArrayList<>();
+                boolean isValidExpr = true;
                 for(SimplifyParser.ExpressionContext element : arrExprCtx.expression()){
                     if(!elemType.equals(getExprType(element))){
                         System.err.println("Type mismatch in declaration of '" + id + "' array: expected " + elemType + ", found " + getExprType(element));
-                        return;
+                        isValidExpr = false;
                     }
                     values.add(parseExprAsObject(element, elemType));
                 }
-
+                if(!isValidExpr){
+                    return;
+                }
                 //Add variable to localVarTable
                 localVarType.put(id, type);
-                localVarIndex.put(id, nextLocalIndex);
+                localVarIndex.put(id, nextLocalIndex++);
                 varValues.put(id, values);
 
                 //generate Bytecode
                 generateExpr(exprCtx);
                 return;
+            }else if(exprCtx instanceof SimplifyParser.EmptyDictExprContext){
+                localVarType.put(id, type);
+                localVarIndex.put(id, nextLocalIndex++);
+                varValues.put(id, new HashMap<>());
+                //Generate bytecode for empty dictionary
+                generateExpr(exprCtx);
+                return;
+            }else if(exprCtx instanceof SimplifyParser.DictExprContext dictExpr){
+                if(storeDictValue(dictExpr, id)){
+                    localVarType.put(id, type);
+                    localVarIndex.put(id, nextLocalIndex++);
+                    dictVar = id;
+                    generateExpr(dictExpr);
+                }
+                return;
             }
             //Check if the assigned value has same type as variable
-            if(!type.equals(exprType)){
-                System.err.println("Type mismatch in declaration of '" + id + "': expected " + type + ", found " + exprType);
+            if(!CompareType(type, exprType, id)){
                 return;
             }
             //Compile constant variable
@@ -191,12 +227,14 @@ public class SimplifyCompiler extends SimplifyBaseListener {
         int index = nextLocalIndex;
         localVarType.put(id, type);
         localVarIndex.put(id, index);
-        switch(type){
-            case "num", "bool" -> code.addIstore(index);
-            case "dec" -> code.addDstore(index);
-            case "str" -> code.addAstore(index);
-            case "arr[str]" -> code.addAstore(index);
-            default -> System.err.println("Unsupported type in declaration: " + type);
+        if(exprCtx != null){
+            switch(type){
+                case "num", "bool" -> code.addIstore(index);
+                case "dec" -> code.addDstore(index);
+                case "str" -> code.addAstore(index);
+                case "arr[str]", "arr[num]", "arr[dec]", "arr[bool]" -> code.addAstore(index);
+                default -> System.err.println("Unsupported type in declaration: " + type);
+            }
         }
         if(type.equals("dec")){
             nextLocalIndex += 2;
@@ -209,10 +247,67 @@ public class SimplifyCompiler extends SimplifyBaseListener {
     public void enterAssignment(SimplifyParser.AssignmentContext ctx) {
         if(!canEmit) return; //Prevent emit bytecode in conditional statement
         String id = ctx.ID().getText();
+        if(!isVarExist(id)){
+            return;
+        }
+        int idIndex = localVarIndex.get(id);
+        curIndex = idIndex;
         String type = localVarType.get(id);
         SimplifyParser.ExpressionContext exprValue = ctx.expression().size() == 1 ?
                 ctx.expression(0) : ctx.expression(1);
         String exprType = getExprType(exprValue);
+        if(exprValue instanceof SimplifyParser.EmptyArrExprContext){
+            //compare declared variable type with expr type
+            if(!CompareType(type, exprType, id)){
+                return;
+            }
+            curElementType = type.substring(4, type.length() - 1);
+            varValues.put(id, new ArrayList<>());
+            generateExpr(exprValue);
+            return;
+        }else if(exprValue instanceof SimplifyParser.ArrExprContext arrExprCtx){
+            //compare declared variable type with expr type
+            if(!CompareType(type, exprType, id)){
+                return;
+            }
+            //Check if assigned value match with declared element type
+            String elemType = type.substring(4, type.length() - 1);
+            curElementType = elemType;
+            ArrayList<Object> values = new ArrayList<>();
+            boolean isValidExpr = true;
+            for(SimplifyParser.ExpressionContext element : arrExprCtx.expression()){
+                if(!elemType.equals(getExprType(element))){
+                    System.err.println("Type mismatch in declaration of '" + id + "' array: expected " + elemType + ", found " + getExprType(element));
+                    isValidExpr = false;
+                }
+                values.add(parseExprAsObject(element, elemType));
+            }
+            if(!isValidExpr){
+                return;
+            }
+
+            //Add variable to localVarTable
+            varValues.put(id, values);
+
+            //generate Bytecode
+            generateExpr(exprValue);
+            return;
+        }else if(exprValue instanceof SimplifyParser.EmptyDictExprContext){
+            //compare declared variable type with expr type
+            if(!CompareType(type, exprType, id)){
+                return;
+            }
+            varValues.put(id, new HashMap<>());
+            generateExpr(exprValue);
+            return;
+        }else if(exprValue instanceof SimplifyParser.DictExprContext dictExpr){
+            if(storeDictValue(dictExpr, id)){
+                localVarType.put(id, type);
+                dictVar = id;
+                generateExpr(dictExpr);
+            }
+            return;
+        }
 
         if(!type.equals(exprType)){
             System.err.println("Type mismatch in assignment of '" + id + "': expected " + type + ", found " + exprType);
@@ -228,7 +323,7 @@ public class SimplifyCompiler extends SimplifyBaseListener {
             case "num", "bool" -> code.addIstore(index);
             case "dec" -> code.addDstore(index);
             case "str" -> code.addAstore(index);
-            default -> System.err.println("Unsupported type in declaration: " + type);
+            default -> System.err.println("Unsupported type in assignment: " + type);
         }
     }
 
@@ -480,7 +575,11 @@ public class SimplifyCompiler extends SimplifyBaseListener {
             case "dec" -> code.addInvokevirtual("java/io/PrintStream", "println", "(D)V");
             case "bool" -> code.addInvokevirtual("java/io/PrintStream", "println", "(Z)V");
             case "str" -> code.addInvokevirtual("java/io/PrintStream", "println", "(Ljava/lang/String;)V");
-            case "arr[str]", "arr[num]", "arr[dec]", "arr[bool]" -> code.addInvokevirtual("java/io/PrintStream", "println", "(Ljava/lang/Object;)V");
+            case "arr[str]",
+                 "arr[num]",
+                 "arr[dec]",
+                 "arr[bool]",
+                 "dict" -> code.addInvokevirtual("java/io/PrintStream", "println", "(Ljava/lang/Object;)V");
             default -> System.err.println("Unsupported type for result: " + exprType);
         }
     }
@@ -508,7 +607,7 @@ public class SimplifyCompiler extends SimplifyBaseListener {
             switch(type){
                 case "num", "bool" -> code.addIload(index);
                 case "dec" -> code.addDload(index);
-                case "str" -> code.addAload(index);
+                case "str", "dict" -> code.addAload(index);
                 case "arr[str]", "arr[num]", "arr[dec]", "arr[bool]" -> code.addAload(index);
                 default -> System.err.println("Unsupported type for expression: " + type);
             }
@@ -704,6 +803,8 @@ public class SimplifyCompiler extends SimplifyBaseListener {
             }
         }else if(ctx instanceof SimplifyParser.EmptyArrExprContext || ctx instanceof SimplifyParser.ArrExprContext){
             generateArray(ctx);
+        }else if(ctx instanceof SimplifyParser.EmptyDictExprContext || ctx instanceof SimplifyParser.DictExprContext){
+            generateDictionary(ctx);
         }else if(ctx instanceof SimplifyParser.MethodCallExprContext methodCtx){
             generateMethodExpr(methodCtx);
         }
@@ -755,8 +856,7 @@ public class SimplifyCompiler extends SimplifyBaseListener {
         }
         code.addInvokestatic("java/util/Arrays", "asList", "([Ljava/lang/Object;)Ljava/util/List;");
         code.addInvokespecial("java/util/ArrayList", "<init>", "(Ljava/util/Collection;)V");
-        code.addAstore(nextLocalIndex);
-        nextLocalIndex++;
+        code.addAstore(curIndex);
     }
 
     private void generateArrayType(){
@@ -776,8 +876,52 @@ public class SimplifyCompiler extends SimplifyBaseListener {
         }
     }
 
+    private void generateDictionary(SimplifyParser.ExpressionContext ctx){
+        code.addNew("java/util/HashMap");
+        code.addOpcode(Opcode.DUP);
+        code.addInvokespecial("java/util/HashMap", "<init>", "()V");
+        code.addAstore(curIndex);
+        if(ctx instanceof SimplifyParser.DictExprContext dictExpr){
+            int varIndex = localVarIndex.get(dictVar);
+            boolean isKey = true;
+            for(SimplifyParser.ExpressionContext expr : dictExpr.expression()){
+                if(isKey){
+                    isKey = false;
+                    code.addAload(varIndex);
+                    code.addLdc(expr.getText().substring(1, expr.getText().length() - 1));
+                }else{
+                    isKey = true;
+                    String exprType = getExprType(expr);
+                    switch (exprType){
+                        case "str":
+                            code.addLdc(expr.getText().substring(1, expr.getText().length() - 1));
+                            break;
+                        case "num":
+                            code.addIconst(Integer.parseInt(expr.getText()));
+                            code.addInvokestatic("java/lang/Integer", "valueOf", "(I)Ljava/lang/Integer;");
+                            break;
+                        case "dec":
+                            code.addLdc2w(Double.parseDouble(expr.getText()));
+                            code.addInvokestatic("java/lang/Double", "valueOf", "(D)Ljava/lang/Double;");
+                            break;
+                        case "bool":
+                            int isTrue = expr.getText().equals("True") ? 1 : 0;
+                            code.addIconst(isTrue);
+                            code.addInvokestatic("java/lang/Boolean", "valueOf", "(Z)Ljava/lang/Boolean;");
+                            break;
+                    }
+                    code.addInvokevirtual("java/util/HashMap", "put", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
+                    code.addOpcode(Opcode.POP);
+                }
+            }
+        }
+    }
+
     private void generateMethodExpr(SimplifyParser.MethodCallExprContext ctx){
         String idName = ctx.ID().getText();
+        if(!isVarExist(idName)){
+            return;
+        }
         String idType = localVarType.get(idName);
         int index = localVarIndex.get(idName);
         String methodName = ctx.methodName().getText();
@@ -971,6 +1115,9 @@ public class SimplifyCompiler extends SimplifyBaseListener {
             return "";
         }else if(ctx instanceof SimplifyParser.MethodCallExprContext methodCtx){
             String varName = methodCtx.ID().getText();
+            if(!isVarExist(varName)){
+                return null;
+            }
             Object curValue = varValues.get(varName);
             String methodName = methodCtx.methodName().getText();
 
@@ -1070,8 +1217,8 @@ public class SimplifyCompiler extends SimplifyBaseListener {
         }else if(ctx instanceof SimplifyParser.MethodCallExprContext methodCtx){
             String varName = methodCtx.ID().getText();
             //Check if variable is declared
-            if(localVarIndex.get(varName) == null){
-                throw new IllegalStateException ("Undeclared variable: " + varName);
+            if(!isVarExist(varName)){
+                return "Invalid";
             }
             String method = methodCtx.methodName().getText();
             String type = localVarType.get(varName);
@@ -1103,8 +1250,58 @@ public class SimplifyCompiler extends SimplifyBaseListener {
         }
     }
 
+    private boolean isVarExist(String id){
+        if(localVarIndex.get(id) == null){
+            System.err.println("Undeclared variable: " + id + " before used");
+            return false;
+        }
+        return true;
+    }
+
+    private boolean CompareType(String varType, String exprType, String varName){
+        if(varType.startsWith("arr")) {
+            String type = varType.substring(0, 3);
+            if(type.equals(exprType)) {
+                return true;
+            }
+        }else if(varType.equals(exprType)){
+            return true;
+        }
+        System.err.println("Type mismatch in declaration of '" + varName + "': expected " + varType + ", found " + exprType);
+        return false;
+    }
+
+    private boolean storeDictValue(SimplifyParser.DictExprContext ctx, String id){
+        boolean isKey = true;
+        int line = ctx.start.getLine();
+        String curKey = "";
+        HashMap<String, Object> dictItems = new HashMap<>();
+        for(SimplifyParser.ExpressionContext curExpr : ctx.expression()){
+            String exprType = getExprType(curExpr);
+            if(isKey){
+                isKey = false;
+                if(!exprType.equals("str")){
+                    System.err.println("Semantic Error at line " + line + ": Invalid key type in dictionary. Allowed 'str' type only, but found '" + exprType + "'");
+                    return false;
+                }
+                curKey = curExpr.getText();
+            }else{
+                isKey = true;
+                ArrayList<String> validType = new ArrayList<>(Arrays.asList("str", "num", "dec", "bool"));
+                if(!validType.contains(exprType)){
+                    System.err.println("Semantic Error at line " + line + ": Invalid value type in dictionary. Allowed types are str, num, dec, or bool, but found '" + exprType + "'");
+                    return false;
+                }
+                dictItems.put(curKey, parseExprAsObject(curExpr, exprType));
+            }
+        }
+        varValues.put(id, dictItems);
+        return true;
+    }
+
     private Object parseExprAsObject(SimplifyParser.ExpressionContext ctx, String elemType){
         String text = ctx.getText();
+        int line = ctx.start.getLine();
         switch(elemType){
             case "str":
                 return text;
@@ -1115,7 +1312,7 @@ public class SimplifyCompiler extends SimplifyBaseListener {
             case "bool":
                 return Boolean.parseBoolean(text);
             default:
-                throw new RuntimeException("Unsupported element type in array: " + elemType);
+                throw new RuntimeException("Semantic Error at line " + line + ": Unsupported element type in array: " + elemType);
         }
     }
 
