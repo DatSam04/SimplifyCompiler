@@ -158,6 +158,9 @@ public class SimplifyCompiler extends SimplifyBaseListener {
         if(exprCtx != null){
             //Compile Array variable
             String exprType = getExprType(exprCtx);
+            if(exprType.equals("Invalid")){
+                return;
+            }
             if(exprCtx instanceof SimplifyParser.EmptyArrExprContext){
                 //compare declared variable type with expr type
                 if(!CompareType(type, exprType, id)){
@@ -218,6 +221,9 @@ public class SimplifyCompiler extends SimplifyBaseListener {
                 return;
             }
             //Compile constant variable
+            if(evaluateExpr(exprCtx).equals("Invalid")){
+                return;
+            }
             varValues.put(id, evaluateExpr(exprCtx));
             generateExpr(exprCtx);
         }else{
@@ -243,11 +249,12 @@ public class SimplifyCompiler extends SimplifyBaseListener {
         }
     }
 
+    @SuppressWarnings("unchecked")
     @Override
     public void enterAssignment(SimplifyParser.AssignmentContext ctx) {
         if(!canEmit) return; //Prevent emit bytecode in conditional statement
         String id = ctx.ID().getText();
-        if(!isVarExist(id)){
+        if(!isVarExist(id, ctx.start.getLine())){
             return;
         }
         int idIndex = localVarIndex.get(id);
@@ -256,6 +263,13 @@ public class SimplifyCompiler extends SimplifyBaseListener {
         SimplifyParser.ExpressionContext exprValue = ctx.expression().size() == 1 ?
                 ctx.expression(0) : ctx.expression(1);
         String exprType = getExprType(exprValue);
+
+        //Compile assingment via indexing first
+        if(ctx.expression().size() == 2){
+            processIndexing(ctx);
+            return;
+        }
+
         if(exprValue instanceof SimplifyParser.EmptyArrExprContext){
             //compare declared variable type with expr type
             if(!CompareType(type, exprType, id)){
@@ -316,6 +330,9 @@ public class SimplifyCompiler extends SimplifyBaseListener {
 
         //Generate bytecode for expr and store them in the associate var
         int index = localVarIndex.get(id);
+        if(evaluateExpr(exprValue).equals("Invalid")){
+            return;
+        }
         varValues.put(id, evaluateExpr(exprValue));
         generateExpr(exprValue);
 
@@ -562,6 +579,13 @@ public class SimplifyCompiler extends SimplifyBaseListener {
     @Override
     public void enterResult(SimplifyParser.ResultContext ctx) {
         if(!canEmit) return;
+        if(ctx.expression() instanceof SimplifyParser.IdExprContext){
+            String id = ctx.expression().getText();
+            if(!localVarIndex.containsKey(id)){
+                System.err.println("Semantic Error at line " + ctx.start.getLine() + ": variable " + id + " hasn't declared");
+                return;
+            }
+        }
         //Add getstatic to use print statement
         code.addGetstatic("java/lang/System", "out", "Ljava/io/PrintStream;");
 
@@ -617,6 +641,7 @@ public class SimplifyCompiler extends SimplifyBaseListener {
             String rightType = getExprType(numOpCtx.expression(1));
             if(!leftType.equals(rightType)){
                 System.err.println("Type mismatch numerical operation: " + leftType + " " + numOpCtx.getChild(1).getText() + " " + rightType);
+                return;
             }
 
             //Load both expression
@@ -807,6 +832,78 @@ public class SimplifyCompiler extends SimplifyBaseListener {
             generateDictionary(ctx);
         }else if(ctx instanceof SimplifyParser.MethodCallExprContext methodCtx){
             generateMethodExpr(methodCtx);
+        }else if(ctx instanceof SimplifyParser.IndexAccessExprContext indexCtx){
+            generateIndexExpr(indexCtx);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void generateIndexExpr(SimplifyParser.IndexAccessExprContext indexCtx){
+        String id = indexCtx.ID().getText();
+        if(!isVarExist(id, indexCtx.start.getLine())){
+            return;
+        }
+        int idIndex = localVarIndex.get(id);
+        String type = localVarType.get(id);
+        String indexType = getExprType(indexCtx.expression());
+        if(type.startsWith("arr")){
+            ArrayList<Object> curArr = (ArrayList<Object>) varValues.get(id);
+            if(!indexType.equals("num")){
+                System.err.println("Semantic Error at line " + indexCtx.start.getLine() + ": Wrong index type. Index of array must be 'num', but found " + indexType);
+                return;
+            }
+            int index = Integer.parseInt(indexCtx.expression().getText());
+            if(index > curArr.size() - 1){
+                System.err.println("Runtime Error at line " + indexCtx.start.getLine() + ": can't evaluate Expression. Index " + index + " our of range array '" + id + "'");
+                return;
+            }
+
+            String elemType = type.substring(4, type.length() - 1);
+            code.addAload(idIndex);
+            code.addIconst(index);
+            code.addInvokevirtual("java/util/ArrayList","get","(I)Ljava/lang/Object;");
+            switch(elemType){
+                case "str":
+                    code.addCheckcast("java/lang/String");
+                    break;
+                case "num":
+                    code.addCheckcast("java/lang/Integer");
+                    code.addInvokevirtual("java/lang/Integer","intValue","()I");
+                    break;
+                case "dec":
+                    code.addCheckcast("java/lang/Double");
+                    code.addInvokevirtual("java/lang/Double","doubleValue","()D");
+                    break;
+                case "bool":
+                    code.addCheckcast("java/lang/Boolean");
+                    code.addInvokevirtual("java/lang/Boolean","booleanValue","()Z");
+                    break;
+            }
+        }else if(type.equals("dict")){
+            HashMap<String, Object> curDict = (HashMap<String, Object>) varValues.get(id);
+            if(!indexType.equals("str")){
+                System.err.println("Semantic Error at line " + indexCtx.start.getLine() + ": Wrong index type. Index of dictionary must be 'str', but found " + indexType);
+                return;
+            }
+            String indexString = indexCtx.expression().getText();
+            if(!curDict.containsKey(indexString)){
+                System.err.println("Invalid index in line " + indexCtx.start.getLine() + ": " + indexString + " key doesn't exist in '" + id + "'");
+                return;
+            }
+            Object value =  curDict.get(indexString);
+            code.addAload(idIndex);
+            code.addLdc(indexString.substring(1,  indexString.length() - 1));
+            code.addInvokevirtual("java/util/HashMap", "get", "(Ljava/lang/Object;)Ljava/lang/Object;");
+            code.addInvokevirtual("java/lang/Object", "toString", "()Ljava/lang/String;");
+            if(value instanceof Integer){
+                code.addInvokestatic("java/lang/Integer","parseInt","(Ljava/lang/String;)I");
+            }else if(value instanceof Double){
+                code.addInvokestatic("java/lang/Double","parseDouble","(Ljava/lang/String;)D");
+                code.addInvokestatic("java/lang/Double","valueOf","(D)Ljava/lang/Double;");
+            }else if(value instanceof Boolean){
+                code.addInvokestatic("java/lang/Boolean","parseBoolean","(Ljava/lang/String;)Z");
+                code.addInvokestatic("java/lang/Boolean","valueOf","(Z)Ljava/lang/Boolean;");
+            }
         }
     }
 
@@ -919,7 +1016,7 @@ public class SimplifyCompiler extends SimplifyBaseListener {
 
     private void generateMethodExpr(SimplifyParser.MethodCallExprContext ctx){
         String idName = ctx.ID().getText();
-        if(!isVarExist(idName)){
+        if(!isVarExist(idName, ctx.start.getLine())){
             return;
         }
         String idType = localVarType.get(idName);
@@ -1115,7 +1212,7 @@ public class SimplifyCompiler extends SimplifyBaseListener {
             return "";
         }else if(ctx instanceof SimplifyParser.MethodCallExprContext methodCtx){
             String varName = methodCtx.ID().getText();
-            if(!isVarExist(varName)){
+            if(!isVarExist(varName, methodCtx.start.getLine())){
                 return null;
             }
             Object curValue = varValues.get(varName);
@@ -1167,6 +1264,76 @@ public class SimplifyCompiler extends SimplifyBaseListener {
                 return keys;
             }
             return null;
+        }else if(ctx instanceof SimplifyParser.IndexAccessExprContext indexCtx){
+            String id = indexCtx.ID().getText();
+            if(!isVarExist(id, indexCtx.start.getLine())){
+                return "Invalid";
+            }
+            String type = localVarType.get(id);
+            boolean isValid = true;
+            if(type.startsWith("arr")){
+                String indexType = getExprType(indexCtx.expression());
+                ArrayList<Object> curArr = (ArrayList<Object>)  varValues.get(id);
+                int index = 0;
+                if(!indexType.equals("num")){
+                    System.err.println("Semantic Error at line " + ctx.start.getLine() + ": Wrong index type. Index of array must be 'num', but found " + indexType);
+                    isValid = false;
+                }else{
+                    index = Integer.parseInt(indexCtx.expression().getText());
+                    if(index > curArr.size() - 1){
+                        System.err.println("Runtime Error at line " + ctx.start.getLine() + ": can't evaluate Expression. Index " + index + " our of range array '" + id + "'");
+                        isValid = false;
+                    }
+                }
+
+                if(!isValid){
+                    return "Invalid";
+                }
+
+                Object value = curArr.get(index);
+                if(value instanceof String){
+                    return value;
+                }else if(value instanceof Integer){
+                    return Integer.parseInt(value.toString());
+                }else if(value instanceof Double){
+                    return Double.parseDouble(value.toString());
+                }else if(value instanceof Boolean){
+                    return Boolean.parseBoolean(value.toString());
+                }else{
+                    return "Invalid";
+                }
+            }else if(type.equals("dict")){
+                HashMap<String, Object> curDict = (HashMap<String, Object>) varValues.get(id);
+                String indexType = getExprType(indexCtx.expression());
+                String indexStr = "";
+                if(!indexType.equals("str")){
+                    System.err.println("Semantic Error at line " + ctx.start.getLine() + ": Wrong index type. Index of dictionary must be 'str', but found " + indexType);
+                    isValid = false;
+                }else{
+                    indexStr = indexCtx.expression().getText();
+                    if(!curDict.containsKey(indexStr)){
+                        System.err.println("Runtime Error at line " + ctx.start.getLine() + ": can't evaluate Expression. '" + indexStr + "' key doesn't exist in '" + id + "'");
+                        isValid = false;
+                    }
+                }
+                if(!isValid){
+                    return "Invalid";
+                }
+                Object value = curDict.get(indexStr);
+                if(value instanceof String){
+                    return value;
+                }else if(value instanceof Integer){
+                    return Integer.parseInt(value.toString());
+                }else if(value instanceof Double){
+                    return Double.parseDouble(value.toString());
+                }else if(value instanceof Boolean){
+                    return Boolean.parseBoolean(value.toString());
+                }else{
+                    return "Invalid";
+                }
+            }else{
+                return "Invalid";
+            }
         }else{
             throw new UnsupportedOperationException("Unsupported expression type: " + ctx.getClass());
         }
@@ -1185,6 +1352,7 @@ public class SimplifyCompiler extends SimplifyBaseListener {
     }
 
     //Return Simplify type of expr
+    @SuppressWarnings("unchecked")
     private String getExprType(SimplifyParser.ExpressionContext ctx){
         if (ctx instanceof SimplifyParser.NumberExprContext) {
             return "num";
@@ -1217,24 +1385,27 @@ public class SimplifyCompiler extends SimplifyBaseListener {
         }else if(ctx instanceof SimplifyParser.MethodCallExprContext methodCtx){
             String varName = methodCtx.ID().getText();
             //Check if variable is declared
-            if(!isVarExist(varName)){
+            if(!isVarExist(varName, methodCtx.start.getLine())){
                 return "Invalid";
             }
             String method = methodCtx.methodName().getText();
             String type = localVarType.get(varName);
             if(method.equals("length")){ //String method
                 if(!type.equals("str")){
-                    throw new IllegalArgumentException("String Method 'length' cannot be called on variable '" + varName + "' of type " + type);
+                    System.err.println("Semantic Error at line " + ctx.start.getLine() + ": String Method 'length' cannot be called on variable '" + varName + "' of type " + type);
+                    return "Invalid";
                 }
                 return "num";
             }else if(method.equals("size")){ //process size method for array and dictionary
                 if(!type.equals("dict") || !type.startsWith("arr")){
-                    throw new IllegalArgumentException("Complex type Method '" + method +"' cannot be called on variable '" + varName + "' of type " + type);
+                    System.err.println("Semantic Error at line " + ctx.start.getLine() + ": Complex type Method '" + method +"' cannot be called on variable '" + varName + "' of type " + type);
+                    return "Invalid";
                 }
                 return "num";
             }else if(method.equals("key")){//process key method for dictionary
                 if(!type.equals("dict")){
-                    throw new IllegalArgumentException("Dictionary Method '" + method +"' cannot be called on variable '" + varName + "' of type " + type);
+                    System.err.println("Semantic Error at line " + ctx.start.getLine() + ": Dictionary Method '" + method +"' cannot be called on variable '" + varName + "' of type " + type);
+                    return "Invalid";
                 }
                 return "arr[str]";
             }else{ //Return invalid for other methods because they didn't return value
@@ -1242,20 +1413,187 @@ public class SimplifyCompiler extends SimplifyBaseListener {
                 if(parent instanceof SimplifyParser.InnerStatementContext){
                     return null;
                 }
-                System.err.println("'" + method + "' method doesn't return a value");
+                System.err.println("Semantic Error at line " + ctx.start.getLine() + ": '" + method + "' method doesn't return a value");
                 return "Invalid";
+            }
+        }else if(ctx instanceof SimplifyParser.IndexAccessExprContext indexCtx){
+            String id = indexCtx.ID().getText();
+            if(!isVarExist(id, indexCtx.start.getLine())){
+                return "Invalid";
+            }
+            String type =  localVarType.get(id);
+            if(type.startsWith("arr")){
+                String elemType = type.substring(4, type.length() - 1);
+                return elemType;
+            }else{
+                HashMap<String, Object> curDict = (HashMap<String, Object>) varValues.get(id);
+                String indexType = getExprType(indexCtx.expression());
+                if(!indexType.equals("str")){
+                    System.err.println("Semantic Error at line " + ctx.start.getLine() + ": Wrong index type. Index of dictionary must be 'str', but found " + indexType);
+                    return "Invalid";
+                }
+                String indexStr = indexCtx.expression().getText();
+                if(!curDict.containsKey(indexStr)){
+                    System.err.println("Runtime Error at line " + ctx.start.getLine() + ": can't define type of non-exist key '" + indexStr + "' in dictionary '" + id + "'");
+                    return "Invalid";
+                }
+                Object value = curDict.get(indexStr);
+                if(value instanceof String){
+                    return "str";
+                }else if(value instanceof Integer){
+                    return "num";
+                }else if(value instanceof Double){
+                    return "dec";
+                }else if(value instanceof Boolean){
+                    return "bool";
+                }else{
+                    return "Invalid";
+                }
             }
         }else {
             return "Invalid";
         }
     }
 
-    private boolean isVarExist(String id){
+    private boolean isVarExist(String id, int line){
         if(localVarIndex.get(id) == null){
-            System.err.println("Undeclared variable: " + id + " before used");
+            System.err.println("Semantic Error at line " + line + ": Undeclared variable '" + id + "' before used");
             return false;
         }
         return true;
+    }
+
+    @SuppressWarnings("unchecked")
+    private void processIndexing(SimplifyParser.AssignmentContext ctx){
+        String id = ctx.ID().getText();
+        int idIndex = localVarIndex.get(id);
+        String type = localVarType.get(id);
+        SimplifyParser.ExpressionContext exprValue = ctx.expression(1);
+        String exprType = getExprType(ctx.expression(1));
+        boolean isValid = true;
+        String indexType = getExprType(ctx.expression(0));
+        ArrayList<String> supportType =  new ArrayList<>(Arrays.asList("str", "num", "dec", "bool"));
+        if(type.startsWith("arr")){
+            ArrayList<Object> values = (ArrayList<Object>) varValues.get(id);
+            int index = 0;
+            //Check if index is num type
+            if(!indexType.equals("num")){
+                System.err.println("Semantic Error at line " + ctx.start.getLine() + ": Wrong index type. Index of array must be 'num', but found " + indexType);
+                isValid = false;
+            }else{
+                //Check if index our of range
+                index = Integer.parseInt(ctx.expression(0).getText());
+                if(index > values.size() - 1){
+                    System.err.println("Index Error at line " + ctx.start.getLine() + ". array index out of range");
+                    isValid = false;
+                }
+            }
+
+            //Check if expression is constant type (str, num, dec, bool)
+            if(!supportType.contains(exprType)){
+                System.err.println("Semantic Error at line " + ctx.start.getLine() + ": Unsupported type in array. Expected 'str', 'num', 'dec', or 'bool', but found " + exprType);
+                isValid = false;
+            }
+
+            //Check if expression type match with element type
+            String elemType = type.substring(4, type.length() - 1);
+            if(!elemType.equals(exprType)){
+                System.err.println("Semantic Error at line " + ctx.start.getLine() + ": Type mismatch in assignment. Can't assign '" + exprType +"' value to array of type '" + elemType + "'");
+                isValid = false;
+            }
+            //Stop compiling for this line if there is error in either lhs or rhs
+            if(!isValid && exprType.equals("Invalid")){
+                return;
+            }
+
+            //Modify value in local variable
+            values.set(index, parseExprAsObject(exprValue, elemType));
+            varValues.put(id, values);
+
+            //Generate bytecode
+            code.addAload(idIndex);
+            code.addIconst(index);
+            switch(exprType){
+                case "str":
+                    String value = exprValue.getText().substring(1, exprValue.getText().length() - 1);
+                    code.addLdc(value);
+                    break;
+                case "num":
+                    int num = Integer.parseInt(exprValue.getText());
+                    code.addIconst(num);
+                    code.addInvokestatic("java/lang/Integer","valueOf","(I)Ljava/lang/Integer;");
+                    break;
+                case "dec":
+                    double dec = Double.parseDouble(exprValue.getText());
+                    code.addLdc2w(dec);
+                    code.addInvokestatic("java/lang/Double","valueOf","(D)Ljava/lang/Double;");
+                    break;
+                case "bool":
+                    int isTrue =  exprValue.getText().equals("True") ? 1 : 0;
+                    code.addIconst(isTrue);
+                    code.addInvokestatic("java/lang/Boolean","valueOf","(Z)Ljava/lang/Boolean;");
+                    break;
+            }
+            code.addInvokevirtual("java/util/ArrayList", "set", "(ILjava/lang/Object;)Ljava/lang/Object;");
+            code.addOpcode(Opcode.POP);
+        }else if(type.equals("dict")){
+            HashMap<String, Object> curDict =  (HashMap<String, Object>) varValues.get(id);
+            String keyIndex = "";
+            //Check if the index of dictionary is string
+            if(!indexType.equals("str")){
+                System.err.println("Semantic Error at line " + ctx.start.getLine() + ": Wrong index type. Index of dictionary must be 'str', but found " + indexType);
+                isValid = false;
+            }else{
+                //Check if the key existed in dictionary
+                keyIndex = ctx.expression(0).getText();
+                if(!curDict.containsKey(keyIndex)){
+                    System.err.println("Index Error at line " + ctx.start.getLine() + ": " + keyIndex + " key does not exist in '" + id + "'");
+                    isValid = false;
+                }
+            }
+
+            //Check if value expression is constant type (str, num, dec, bool)
+            if(!supportType.contains(exprType)){
+                System.err.println("Semantic Error at line " + ctx.start.getLine() + ": Unsupported type in dictionary. Expected 'str', 'num', 'dec', or 'bool', but found " + exprType);
+                isValid = false;
+            }
+
+            //Skip the rest if have error
+            if(!isValid && exprType.equals("Invalid")){
+                return;
+            }
+
+            //Modify values in local Var
+            curDict.put(keyIndex, parseExprAsObject(ctx.expression(1), exprType));
+            varValues.put(id, curDict);
+
+            //Generate bytecode
+            String indexStr = ctx.expression(0).getText().substring(1, ctx.expression(0).getText().length() - 1);
+            code.addAload(idIndex);
+            code.addLdc(indexStr);
+            switch (exprType){
+                case "str":
+                    code.addLdc(exprValue.getText().substring(1, exprValue.getText().length() - 1));
+                    break;
+                case "num":
+                    code.addIconst(Integer.parseInt(exprValue.getText()));
+                    code.addInvokestatic("java/lang/Integer", "valueOf", "(I)Ljava/lang/Integer;");
+                    break;
+                case "dec":
+                    code.addLdc2w(Double.parseDouble(exprValue.getText()));
+                    code.addInvokestatic("java/lang/Double", "valueOf", "(D)Ljava/lang/Double;");
+                    break;
+                case "bool":
+                    int isTrue = exprValue.getText().equals("True") ? 1 : 0;
+                    code.addIconst(isTrue);
+                    code.addInvokestatic("java/lang/Boolean", "valueOf", "(Z)Ljava/lang/Boolean;");
+                    break;
+            }
+            code.addInvokevirtual("java/util/HashMap", "put", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
+            code.addOpcode(Opcode.POP);
+        }else{
+            System.err.println("Indexing Error at line " + ctx.start.getLine() + ": Expected 'array' and 'dict' variable but found '" + type + "' variable");
+        }
     }
 
     private boolean CompareType(String varType, String exprType, String varName){
@@ -1271,8 +1609,10 @@ public class SimplifyCompiler extends SimplifyBaseListener {
         return false;
     }
 
+    @SuppressWarnings("unchecked")
     private boolean storeDictValue(SimplifyParser.DictExprContext ctx, String id){
         boolean isKey = true;
+        boolean hasError = false;
         int line = ctx.start.getLine();
         String curKey = "";
         HashMap<String, Object> dictItems = new HashMap<>();
@@ -1282,7 +1622,7 @@ public class SimplifyCompiler extends SimplifyBaseListener {
                 isKey = false;
                 if(!exprType.equals("str")){
                     System.err.println("Semantic Error at line " + line + ": Invalid key type in dictionary. Allowed 'str' type only, but found '" + exprType + "'");
-                    return false;
+                    hasError = true;
                 }
                 curKey = curExpr.getText();
             }else{
@@ -1290,10 +1630,13 @@ public class SimplifyCompiler extends SimplifyBaseListener {
                 ArrayList<String> validType = new ArrayList<>(Arrays.asList("str", "num", "dec", "bool"));
                 if(!validType.contains(exprType)){
                     System.err.println("Semantic Error at line " + line + ": Invalid value type in dictionary. Allowed types are str, num, dec, or bool, but found '" + exprType + "'");
-                    return false;
+                    hasError = true;
                 }
                 dictItems.put(curKey, parseExprAsObject(curExpr, exprType));
             }
+        }
+        if(hasError){
+            return false;
         }
         varValues.put(id, dictItems);
         return true;
@@ -1301,6 +1644,19 @@ public class SimplifyCompiler extends SimplifyBaseListener {
 
     private Object parseExprAsObject(SimplifyParser.ExpressionContext ctx, String elemType){
         String text = ctx.getText();
+        if(ctx instanceof  SimplifyParser.IndexAccessExprContext indexCtx){
+            String id = indexCtx.ID().getText();
+            String type = localVarType.get(id);
+            if(type.startsWith("arr")){
+                ArrayList<Object> values = (ArrayList<Object>) varValues.get(id);
+                int index = Integer.parseInt(indexCtx.expression().getText());
+                text = values.get(index).toString();
+            }else if(type.equals("dict")){
+                HashMap<String, Object> dictItems = (HashMap<String, Object>) varValues.get(id);
+                String indexStr = indexCtx.expression().getText();
+                text = dictItems.get(indexStr).toString();
+            }
+        }
         int line = ctx.start.getLine();
         switch(elemType){
             case "str":
