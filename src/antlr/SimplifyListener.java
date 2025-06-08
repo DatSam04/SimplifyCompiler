@@ -140,6 +140,18 @@ public interface SimplifyListener extends ParseTreeListener {
 	 */
 	void exitAssignment(SimplifyParser.AssignmentContext ctx);
 	/**
+	 * Enter a parse tree produced by the {@code addDictItemExpr}
+	 * labeled alternative in {@link SimplifyParser#expression}.
+	 * @param ctx the parse tree
+	 */
+	void enterAddDictItemExpr(SimplifyParser.AddDictItemExprContext ctx);
+	/**
+	 * Exit a parse tree produced by the {@code addDictItemExpr}
+	 * labeled alternative in {@link SimplifyParser#expression}.
+	 * @param ctx the parse tree
+	 */
+	void exitAddDictItemExpr(SimplifyParser.AddDictItemExprContext ctx);
+	/**
 	 * Enter a parse tree produced by the {@code compOpExpr}
 	 * labeled alternative in {@link SimplifyParser#expression}.
 	 * @param ctx the parse tree

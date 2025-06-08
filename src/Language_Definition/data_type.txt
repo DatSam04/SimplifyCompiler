@@ -1,5 +1,3 @@
-# Simplify will support four main data type
-# String, Integer, Float, and Boolean
 str name = "John";
 num x = 10;
 dec y = 10.5;
@@ -9,4 +7,17 @@ result(name);
 result(x);
 result(y);
 result(comp);
-result(test);
+
+num score = 4 - 1;
+
+score = 3 / 5;
+
+num sum = 15 + 2;
+
+bool level = 2 < 4;
+
+level = 2 == 4;
+
+name = "Forest";
+
+bool test = True & False;

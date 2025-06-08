@@ -19,6 +19,10 @@ public class SymbolTableListener extends SimplifyBaseListener {
         this.currentScope = globalScope;
     }
 
+    public GlobalScope getGlobalScope() {
+        return globalScope;
+    }
+
     @Override
     public void enterDeclaration(SimplifyParser.DeclarationContext ctx) {
         int line = ctx.start.getLine();
@@ -350,7 +354,6 @@ public class SymbolTableListener extends SimplifyBaseListener {
             }
             return "undefined";
         }else if(ctx instanceof SimplifyParser.MethodCallExprContext){
-            System.out.println("Method: " + ctx.getText());
             SimplifyParser.MethodCallExprContext curExpr = (SimplifyParser.MethodCallExprContext) ctx;
             String varName = curExpr.ID().getText();
             if(findSymbol(varName) == null){
@@ -370,13 +373,11 @@ public class SymbolTableListener extends SimplifyBaseListener {
                     return "Invalid";
                 }
             }else if(sym.type.equals("dict")){
-                System.out.println("Dict Method: " + sym);
                 String exprType = switch(method){
                     case "size" -> "num";
                     case "key", "value" -> "arr";
                     default -> "Invalid";
                 };
-                System.out.println("Type: " + exprType);
                 return exprType;
             }else{
                 SemanticErrorListener.report("Semantic Error at line " + ctx.start.getLine() + ": there is not built-in method for '" + sym.type + "'");

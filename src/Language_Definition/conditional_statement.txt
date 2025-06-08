@@ -1,9 +1,6 @@
 num a = 4;
 str brand = "KitKat";
 
-#Use if statement to print different text to console base on the condition
-#or keyword is used to perform additional condition
-# and both if and or statement must end with exist key word
 if(a == 6) exist {
     result("Mike is a great designer");
 }or(a < 5) exist{
@@ -12,9 +9,10 @@ if(a == 6) exist {
     result("Mike is an unknown person");
 }
 
-#else statement is always required
 if(brand == "KitKat") exist {
-    result(brand + " is my favorite chocolate");
+    brand = "KitKat is my favorite chocolate"
+    result(brand);
 }else{
-    result(brand + " is not my favorite chocolate");
+    brand = "KitKat is not my favorite chocolate"
+    result(brand);
 }

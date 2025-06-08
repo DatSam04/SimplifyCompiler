@@ -85,7 +85,7 @@ program: statement+ EOF;
 
 comments: SingleLineComment | MultiLineComment;
 
-statement: funcExpr
+statement: function
         | classInit
         | innerStatement
         ;
@@ -94,7 +94,6 @@ innerStatement: assignment
         | comments
         | conditional
         | declaration
-        | function
         | loop
         | result
         | expression SEMI
@@ -117,6 +116,7 @@ assignment: ID ('[' expression ']')? ASSIGN expression SEMI;   //assign new valu
 expression
     : ID '[' expression ']'                                                 #indexAccessExpr
     | ID '.' methodName '(' expression? ')'                                 #methodCallExpr
+    | String ':' expression                                                 #addDictItemExpr
     | '[]'                                                                  #emptyArrExpr
     | '[' expression (',' expression)* ']'                                  #arrExpr
     | '{}'                                                                  #emptyDictExpr

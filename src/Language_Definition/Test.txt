@@ -1,0 +1,16 @@
+str a = "World";
+num b = 15;
+arr[num] points = [5, 10, 12, 4, 7, 2];
+dict security = {
+    "username": "Testing",
+    "password": "123456",
+    "email": "chat@yahoo.com",
+    "phone": 2354
+};
+func str Hello(str n, num next){
+    num test = points[2];
+    str test2 = security["username"];
+    dec c = 2.4;
+    bool d = True;
+    return "";
+}

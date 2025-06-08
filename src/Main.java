@@ -95,11 +95,12 @@ Note: if no stage in command line flag, default stage is "codegen"
                     listener.printSemanticErrors();
                 }
             }else if(stage.equals("codegen")){ //Default stage
-                SimplifyCompiler simplify = new SimplifyCompiler();
                 ParseTree tree = parser.program();
                 ParseTreeWalker walker = new ParseTreeWalker();
+                SymbolTableListener listener = new SymbolTableListener();
+                walker.walk(listener, tree); //Walk the parse tree with symboltabe listener to generate scope table
+                SimplifyCompiler simplify = new SimplifyCompiler(listener.getGlobalScope());
                 walker.walk(simplify, tree);
-
                 simplify.generateClass();
             }
         }

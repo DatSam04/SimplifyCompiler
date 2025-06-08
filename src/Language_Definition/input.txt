@@ -5,18 +5,13 @@ dict info = {
     "Email": ""
 };
 
-func str signUp() {
-    str userInput;
-    result("Welcome to Simplify");
-    #length method return the size of the dictionary
-    f_loop(num i = 0 to info.length()) exist {
-        #info.key() return an array of all keys
-        str curKey = info.key()[i];
-        result("Please enter your " + info.key()[i]);
-        str userInput = readInput();
-        info[curKey] = userInput;
-    }
-    return "";
-}
+str userInput = "";
+result("Welcome to Simplify");
 
-signUp();
+f_loop(num i = 0 to info.size()) exist {
+    arr[str] keys = ["Username", "Password", "Email"];
+    str curKey = keys[i];
+    result("Please enter your info: ");
+    userInput = readInput("");
+    info[curKey] = userInput;
+}

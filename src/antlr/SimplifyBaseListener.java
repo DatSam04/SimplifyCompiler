@@ -161,6 +161,18 @@ public class SimplifyBaseListener implements SimplifyListener {
 	 *
 	 * <p>The default implementation does nothing.</p>
 	 */
+	@Override public void enterAddDictItemExpr(SimplifyParser.AddDictItemExprContext ctx) { }
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The default implementation does nothing.</p>
+	 */
+	@Override public void exitAddDictItemExpr(SimplifyParser.AddDictItemExprContext ctx) { }
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The default implementation does nothing.</p>
+	 */
 	@Override public void enterCompOpExpr(SimplifyParser.CompOpExprContext ctx) { }
 	/**
 	 * {@inheritDoc}

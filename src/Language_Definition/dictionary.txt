@@ -1,22 +1,12 @@
-# use dict keyword to declare a dictionary
-# dictionary contain key(String) and value(any data type) separated by colon
-# each key-value pair is separated by a comma
 dict security = {
     "username": "Testing",
     "password": "123456",
     "email": "chat@yahoo.com",
-    "phone": 2495129403
+    "phone": 249
 };
 
-#updateSecurity will add or update current key and return nothing
-func str updateSecurity(str key1, str newValue){
-    if(security[key1] == "Testing") exist{
-        result("Add new key-value to security");
-    }else{
-        result("Update " + key1 + " key");
-    }
-    security["username"] = newValue;
-    return "Update security";
+if(security["username"] == "Testing") exist{
+    result("Add new key value to security");
+}else{
+    result("Update key");
 }
-
-updateSecurity("password", "5809125");
