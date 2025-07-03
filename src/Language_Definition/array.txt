@@ -2,7 +2,13 @@ arr[num] points = [5, 10, 12, 4, 7, 2];
 
 points.add(17);
 
+points.add("17");
+
+result(points.size());
+
 points.rm(4);
+
+result(points.size());
 
 f_loop(num i = 0 to 6) exist{
     if(i > points[i]) exist{

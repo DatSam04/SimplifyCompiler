@@ -8,4 +8,4 @@ func str counter(num time){
 
 num matchTime = 120;
 result("Match start");
-counter(60);
+counter(matchTime);

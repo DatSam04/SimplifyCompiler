@@ -4,11 +4,12 @@ str school = "Seattle University";
 result(school); #print Seattle University
 
 func str mySchool(){
-    result(school); #print Seattle University
-    str school = "Seattle College";
-    result(school); #print Seattle College;
+    str n = "World";
+    result(school);
+    result(n);
     return "";
 }
 
-mySchool();
-result(school); #Seattle University;
+result(n);
+str n = "Test";
+result(n);

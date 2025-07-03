@@ -10,9 +10,9 @@ if(a == 6) exist {
 }
 
 if(brand == "KitKat") exist {
-    brand = "KitKat is my favorite chocolate"
+    brand = "KitKat is my favorite chocolate";
     result(brand);
 }else{
-    brand = "KitKat is not my favorite chocolate"
+    brand = "KitKat is not my favorite chocolate";
     result(brand);
 }

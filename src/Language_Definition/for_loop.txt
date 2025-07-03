@@ -1,17 +1,8 @@
-#sum function that calculate the sum of an array and return an integer
-func num sum(arr[num] a){
-    num sumScore = 0;
-    #length method return the size of the array
-    f_loop(num i = 0 to a.size()) exist{
-        sumScore += a[i];
-    }
-    return sumScore;
-}
+arr[num] scores = [4,7,10,5,2,7];
 
-arr[num] scores = [4,7,10,-5,2,7];
-result(sum(scores));
-
-#User for loop to modify the value of all elements in the array
 f_loop(num i = 0 to scores.size()) exist{
-    scores[i] = sum(scores);
+    scores[i] = i + 5;
 }
+
+result(scores.size());
+result(scores);

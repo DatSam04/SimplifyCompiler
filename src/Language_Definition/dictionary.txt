@@ -10,3 +10,9 @@ if(security["username"] == "Testing") exist{
 }else{
     result("Update key");
 }
+
+security.addItem("ID": "World");
+security["password"] = True;
+security.rmItem("phone");
+result(security.size());
+result(security.key());

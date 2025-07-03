@@ -9,7 +9,7 @@ str userInput = "";
 result("Welcome to Simplify");
 
 f_loop(num i = 0 to info.size()) exist {
-    arr[str] keys = ["Username", "Password", "Email"];
+    arr[str] keys = info.key();
     str curKey = keys[i];
     result("Please enter your info: ");
     userInput = readInput("");

@@ -600,4 +600,75 @@ public class SymbolTableListener extends SimplifyBaseListener {
     public void printSemanticErrors() {
         SemanticErrorListener.printErrors();
     }
+
+    @Override
+    public void enterMethodCallExpr(SimplifyParser.MethodCallExprContext ctx) {
+        Symbol curSymbol = findSymbol(ctx.ID().getText());
+        if(curSymbol == null){
+            SemanticErrorListener.report("Semantic Error at line " + ctx.start.getLine() + ": variable '" + ctx.ID().getText() + "' used before declared");
+            return;
+        }
+
+        String varType = curSymbol.getType();
+        String method = ctx.methodName().getText();
+        if(varType.equals("str")){
+            if(!method.equals("length")){
+                SemanticErrorListener.report("Semantic Error at line " + ctx.start.getLine() + ": String method '" + method+ "' can't be used with variable of type '" + varType + "'");
+            }else{
+                if(ctx.expression() != null){
+                    SemanticErrorListener.report("Semantic Error at line " + ctx.start.getLine() + ": length method does not take any arguments");
+                }
+            }
+        }else if(varType.equals("dict")){
+            if(method.equals("key")){
+                if(ctx.expression() != null){
+                    SemanticErrorListener.report("Semantic Error at line " + ctx.start.getLine() + ": key method does not take any arguments");
+                }
+            }else if(method.equals("size")){
+                if(ctx.expression() != null){
+                    SemanticErrorListener.report("Semantic Error at line " + ctx.start.getLine() + ": size method does not take any arguments");
+                }
+            }else if(method.equals("rmItem")){
+                if(ctx.expression() == null){
+                    SemanticErrorListener.report("Semantic Error at line " + ctx.start.getLine() + ": missing an argument in rmItem method");
+                }else{
+                    String exprType = expressionType(ctx.expression());
+                    if(!exprType.equals("str")){
+                        SemanticErrorListener.report("Semantic Error at line " + ctx.start.getLine() + ": rmItem method take 1 string argument");
+                    }
+                }
+            }else if(method.equals("addItem")){
+                if(ctx.expression() == null){
+                    SemanticErrorListener.report("Semantic Error at line " + ctx.start.getLine() + ": missing an argument in addItem method");
+                }else if(!(ctx.expression() instanceof SimplifyParser.AddDictItemExprContext addDictCtx)){
+                    SemanticErrorListener.report("Semantic Error at line " + ctx.start.getLine() + ": addItem method take 2 argument in this format(String : value)");
+                }
+            }
+        }else if(varType.startsWith("arr")){
+            if(method.equals("size")){
+                if(ctx.expression() != null){
+                    SemanticErrorListener.report("Semantic Error at line " + ctx.start.getLine() + ": size method does not take any arguments");
+                }
+            }else if(method.equals("rm")){
+                if(ctx.expression() == null){
+                    SemanticErrorListener.report("Semantic Error at line " + ctx.start.getLine() + ": missing an argument in rm method");
+                }else{
+                    String exprType = expressionType(ctx.expression());
+                    if(!exprType.equals("num")){
+                        SemanticErrorListener.report("Semantic Error at line " + ctx.start.getLine() + ": rm method take 1 number");
+                    }
+                }
+            }else if(method.equals("add")){
+                if(ctx.expression() == null){
+                    SemanticErrorListener.report("Semantic Error at line " + ctx.start.getLine() + ": missing an argument in add method");
+                }else{
+                    String exprType = expressionType(ctx.expression());
+                    String valueType = varType.substring(4,  varType.length()-1);
+                    if(!exprType.equals(valueType)){
+                        SemanticErrorListener.report("Semantic Error at line " + ctx.start.getLine() + ": value type mismatch. Expect '" + valueType + "' but found '" +  exprType + "'");
+                    }
+                }
+            }
+        }
+    }
 }
