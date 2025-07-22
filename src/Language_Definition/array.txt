@@ -2,8 +2,6 @@ arr[num] points = [5, 10, 12, 4, 7, 2];
 
 points.add(17);
 
-points.add("17");
-
 result(points.size());
 
 points.rm(4);

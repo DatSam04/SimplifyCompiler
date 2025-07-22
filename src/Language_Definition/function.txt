@@ -1,24 +1,23 @@
-#Declare 4 function to perform simple calculation and return an integer
 num left = 4;
-num right = 10;
+dec right = 10.2;
 
 func num addition(num a, num b){
     return a + b;
 }
 
-func num subtraction(num a, num b){
-    return a - b;
+func str write(str s, bool n){
+    return s;
 }
 
-func num multiplication(num a, num b){
-    return a * b;
+func dec sum(num a, dec b){
+    return b / 2.2;
 }
 
-func num division(num a, num b){
-    return a / b;
+func bool isTrue(dec sn, bool v){
+    return v;
 }
 
-result(addition(left, right));
-result(subtraction(left, right));
-result(multiplication(left, right));
-result(division(left, right));
+addition(left, 14);
+write("World", False);
+sum(72, right);
+isTrue(2.4, False);

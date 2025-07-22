@@ -2,17 +2,20 @@ num a = 4;
 str brand = "KitKat";
 
 if(a == 6) exist {
-    result("Mike is a great designer");
+    str text = "Mike is a great designer";
+    result(text);
 }or(a < 5) exist{
+    str text = "Mike is a great teacher";
     result("Mike is a great teacher");
 }else{
-    result("Mike is an unknown person");
+    str print = "Mike is an unknown person";
+    result(print);
 }
 
 if(brand == "KitKat") exist {
-    brand = "KitKat is my favorite chocolate";
-    result(brand);
+    str brand2 = "KitKat is my favorite chocolate";
+    result(brand2);
 }else{
-    brand = "KitKat is not my favorite chocolate";
-    result(brand);
+    str brand3 = "KitKat is not my favorite chocolate";
+    result(brand3);
 }

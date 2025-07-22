@@ -10,6 +10,5 @@ func str mySchool(){
     return "";
 }
 
-result(n);
 str n = "Test";
 result(n);

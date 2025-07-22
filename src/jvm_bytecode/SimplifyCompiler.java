@@ -39,6 +39,8 @@ public class SimplifyCompiler extends SimplifyBaseListener {
     private Map<String, Object> varValues = new HashMap<>();
     private int nextLocalIndex = 1;
 
+    private Map<String, String> funcReturnType =  new HashMap<>();
+
     //Field for managing local variable across different scope
     private Map<String, Map<String, Integer>> localVarIndexByScope = new HashMap<>();
     private Map<String, Map<String, String>> localVarTypeByScope = new HashMap<>();
@@ -74,6 +76,8 @@ public class SimplifyCompiler extends SimplifyBaseListener {
     private Bytecode funcCode = null;
     private MethodInfo funcMethod = null;
     private boolean inFunction = false;
+
+    private boolean inControlStructure = false; //Keep track if the code is written inside conditional statement or loops
 
     //Manage class and bytecode in function
     private Bytecode clinitCode = new Bytecode(constPool); // for static init
@@ -215,13 +219,27 @@ public class SimplifyCompiler extends SimplifyBaseListener {
                 getExprType(methodExpr); //Check if the current type has this built-in method
                 evaluateExpr(methodExpr); //Perform action to local variable
                 generateExpr(methodExpr); //Generate JVM bytecode
+            }else if(curExpr instanceof SimplifyParser.FunctionExprContext funcExpr){
+                SimplifyParser.FuncExprContext funcCall = funcExpr.funcExpr();
+                code = getActiveCode(); //ensure the bytecode generate to correct scope
+                if(currentScope.getScopeName().equals("Global Scope")){
+                    code = mainCode;
+                }
+                String funcName = funcCall.ID().getText();
+                if(funcReturnType.get(funcName) == null){
+                    System.err.println("Semantic Error at line " + funcExpr.start.getLine() + ": " + funcName + " doesn't existed.");
+                    return;
+                }
+                generateExpr(funcExpr);
             }
         }
     }
 
     @Override
     public void enterDeclaration(SimplifyParser.DeclarationContext ctx) {
-        code = getActiveCode();
+        if(!inControlStructure){
+            code = getActiveCode();
+        }
         if(!canEmit) return; //Prevent emit bytecode in conditional statement
         String type = ctx.type().getText();
         String id = ctx.ID().getText();
@@ -344,9 +362,11 @@ public class SimplifyCompiler extends SimplifyBaseListener {
     @Override
     public void enterAssignment(SimplifyParser.AssignmentContext ctx) {
         if(!canEmit) return; //Prevent emit bytecode in conditional statement
-        code = getActiveCode();
-        if(currentScope.getScopeName().equals("Global Scope")){
-            code = mainCode;
+        if(!inControlStructure){
+            code = getActiveCode();
+            if(currentScope.getScopeName().equals("Global Scope")){
+                code = mainCode;
+            }
         }
         String id = ctx.ID().getText();
         if(!isVarExist(id, ctx.start.getLine())){
@@ -434,16 +454,21 @@ public class SimplifyCompiler extends SimplifyBaseListener {
         setVariableValue(currentScope, id, value);
         generateExpr(exprValue);
 
-        switch(type){
-            case "num", "bool" -> code.addIstore(index);
-            case "dec" -> code.addDstore(index);
-            case "str" -> code.addAstore(index);
-            default -> System.err.println("Unsupported type in assignment: " + type);
+        if(currentScope.getScopeName().equals("Global Scope")){
+            code.addPutstatic("Main", id,getDescriptor(type));
+        }else{
+            switch(type){
+                case "num", "bool" -> code.addIstore(index);
+                case "dec" -> code.addDstore(index);
+                case "str" -> code.addAstore(index);
+                default -> System.err.println("Unsupported type in assignment: " + type);
+            }
         }
     }
 
     @Override
     public void enterIfBlock(SimplifyParser.IfBlockContext ctx) {
+        inControlStructure = true;
         //Ensure conditional statement (if, or, and else block will be written to the correct scope)
         code = getActiveCode();
         if(currentScope.getScopeName().equals("Global Scope")){
@@ -470,6 +495,7 @@ public class SimplifyCompiler extends SimplifyBaseListener {
     @Override
     public void exitIfBlock(SimplifyParser.IfBlockContext ctx){
         canEmit = true; //Allow emit again
+        inControlStructure = false;
         handleConditionJumpEnd(ctx.expression());
     }
 
@@ -481,6 +507,7 @@ public class SimplifyCompiler extends SimplifyBaseListener {
             return;
         }
 
+        inControlStructure = true;
         SimplifyParser.ExpressionContext condExpr = ctx.expression();
         Boolean evalCond = (Boolean) evaluateExpr(condExpr);
         //Bypass printing epxr condition if the expr contains only constant
@@ -502,6 +529,7 @@ public class SimplifyCompiler extends SimplifyBaseListener {
     @Override
     public void exitOrBlock(SimplifyParser.OrBlockContext ctx){
         canEmit = true;
+        inControlStructure = false;
         handleConditionJumpEnd(ctx.expression());
     }
 
@@ -512,11 +540,13 @@ public class SimplifyCompiler extends SimplifyBaseListener {
         if(!skipBlock || hasCode){
             canEmit = true;
         }
+        inControlStructure = true;
     }
 
     @Override
     public void exitElseBlock(SimplifyParser.ElseBlockContext ctx){
         canEmit = true;
+        inControlStructure = false;
         skipBlock = false;
 
         while(!endJumpOffsets.isEmpty()){ //specify the jump pos for goto in other branches
@@ -593,6 +623,7 @@ public class SimplifyCompiler extends SimplifyBaseListener {
         }else{
             code = getActiveCode();
         }
+        inControlStructure = true;
         //Declare value manually
         String type = "num";
         String id = ctx.ID().getText();
@@ -650,6 +681,8 @@ public class SimplifyCompiler extends SimplifyBaseListener {
         // Patch the exit jump
         int exitJump = loopExitJumps.pop();
         code.write16bit(exitJump, (jumpBackPos + 3) - exitJump );
+
+        inControlStructure = false;
     }
 
     @Override
@@ -659,6 +692,7 @@ public class SimplifyCompiler extends SimplifyBaseListener {
         }else{
             code = getActiveCode();
         }
+        inControlStructure = true;
         String id = ctx.ID().getText();
         boolean isValid = true;
         ArrayList<Object> curVar = getVariableInfo(currentScope, id);
@@ -709,6 +743,7 @@ public class SimplifyCompiler extends SimplifyBaseListener {
         int exitJump = loopExitJumps.pop();
         code.write16bit(exitJump, (jumpBackPos + 3) - exitJump );
         canEmit = true;
+        inControlStructure = false;
     }
 
     @Override
@@ -796,18 +831,18 @@ public class SimplifyCompiler extends SimplifyBaseListener {
     @Override
     public void exitFunction(SimplifyParser.FunctionContext ctx) {
         //Get the parent scope local table
-        ChangeLocalVarTable(currentScope,"Exit");
         SimplifyParser.ReturnStatementContext returnCtx = ctx.returnStatement();
         generateExpr(returnCtx.expression());
         String returnType = ctx.type().getText();
+        funcReturnType.put(ctx.ID().getText(), "Main:" + ctx.ID().getText() + ":" + returnType);
         switch (returnType) {
             case "str":
                 funcCode.addOpcode(Bytecode.ARETURN);
                 break;
-            case "int":
+            case "num":
                 funcCode.addOpcode(Bytecode.IRETURN);
                 break;
-            case "double":
+            case "dec":
                 funcCode.addOpcode(Bytecode.DRETURN);
                 break;
             case "bool":
@@ -830,6 +865,7 @@ public class SimplifyCompiler extends SimplifyBaseListener {
         inFunction = false;
         funcCode = null;
         funcMethod = null;
+        ChangeLocalVarTable(currentScope,"Exit");
         currentScope = currentScope.getEnclosingScope();
     }
 
@@ -847,18 +883,18 @@ public class SimplifyCompiler extends SimplifyBaseListener {
     private void generateExpr(SimplifyParser.ExpressionContext ctx) {
         if(ctx instanceof SimplifyParser.NumberExprContext){
             int num = Integer.parseInt(ctx.getText());
-            code.addIconst(num);
+            isCodeorFunc().addIconst(num);
         }else if(ctx instanceof SimplifyParser.DecimalExprContext){
             double num = Double.parseDouble(ctx.getText());
-            code.addDconst(num);
+            isCodeorFunc().addDconst(num);
         }else if(ctx instanceof SimplifyParser.StringExprContext){
             String str = ctx.getText();
             String actualVal = str.substring(1, str.length() - 1);
-            code.addLdc(actualVal);
+            isCodeorFunc().addLdc(actualVal);
         }else if(ctx instanceof SimplifyParser.TrueExprContext){
-            code.addIconst(1);
+            isCodeorFunc().addIconst(1);
         }else if(ctx instanceof SimplifyParser.FalseExprContext){
-            code.addIconst(0);
+            isCodeorFunc().addIconst(0);
         }else if(ctx instanceof SimplifyParser.IdExprContext idCtx){
             String idName = idCtx.getText();
             ArrayList<Object> varInfo = getVariableInfo(currentScope, idName);
@@ -866,13 +902,13 @@ public class SimplifyCompiler extends SimplifyBaseListener {
             String type = varInfo.get(3).toString();
             String curScope = varInfo.get(0).toString();
             if(curScope.equals("Global Scope")){
-                code.addGetstatic("Main", idName, getDescriptor(type));
+                isCodeorFunc().addGetstatic("Main", idName, getDescriptor(type));
             }else{
                 switch(type){
-                    case "num", "bool" -> code.addIload(index);
-                    case "dec" -> code.addDload(index);
-                    case "str", "dict" -> code.addAload(index);
-                    case "arr[str]", "arr[num]", "arr[dec]", "arr[bool]" -> code.addAload(index);
+                    case "num", "bool" -> isCodeorFunc().addIload(index);
+                    case "dec" -> isCodeorFunc().addDload(index);
+                    case "str", "dict" -> isCodeorFunc().addAload(index);
+                    case "arr[str]", "arr[num]", "arr[dec]", "arr[bool]" -> isCodeorFunc().addAload(index);
                     default -> System.err.println("Unsupported type for expression: " + type);
                 }
             }
@@ -902,17 +938,17 @@ public class SimplifyCompiler extends SimplifyBaseListener {
             //Load operator
             if (leftType.equals("num")) {
                 switch (op) {
-                    case "+" -> code.add(Bytecode.IADD);
-                    case "-" -> code.add(Bytecode.ISUB);
-                    case "*" -> code.add(Bytecode.IMUL);
-                    case "/" -> code.add(Bytecode.IDIV);
+                    case "+" -> isCodeorFunc().add(Bytecode.IADD);
+                    case "-" -> isCodeorFunc().add(Bytecode.ISUB);
+                    case "*" -> isCodeorFunc().add(Bytecode.IMUL);
+                    case "/" -> isCodeorFunc().add(Bytecode.IDIV);
                 }
             } else if (leftType.equals("dec")) {
                 switch (op) {
-                    case "+" -> code.add(Bytecode.DADD);
-                    case "-" -> code.add(Bytecode.DSUB);
-                    case "*" -> code.add(Bytecode.DMUL);
-                    case "/" -> code.add(Bytecode.DDIV);
+                    case "+" -> isCodeorFunc().add(Bytecode.DADD);
+                    case "-" -> isCodeorFunc().add(Bytecode.DSUB);
+                    case "*" -> isCodeorFunc().add(Bytecode.DMUL);
+                    case "/" -> isCodeorFunc().add(Bytecode.DDIV);
                 }
             }
         }else if(ctx instanceof SimplifyParser.CompOpExprContext compOpCtx){
@@ -959,7 +995,7 @@ public class SimplifyCompiler extends SimplifyBaseListener {
                 }
                 parent = parent.getParent();
             }
-            code.add(result ? Bytecode.ICONST_1 : Bytecode.ICONST_0);
+            isCodeorFunc().add(result ? Bytecode.ICONST_1 : Bytecode.ICONST_0);
         }else if(ctx instanceof SimplifyParser.BoolOpExprContext boolCtx) {
             printBoolBytecode(boolCtx);
         }else if(ctx instanceof SimplifyParser.ReadExprContext readCtx){
@@ -970,11 +1006,11 @@ public class SimplifyCompiler extends SimplifyBaseListener {
             //Initialize scanner for input
             String scanner = "scanner";
             if(!localVarIndex.containsKey(scanner)){
-                code.addNew("java/util/Scanner");
-                code.addOpcode(Opcode.DUP);
-                code.addGetstatic("java/lang/System", "in", "Ljava/io/InputStream;");
-                code.addInvokespecial("java/util/Scanner", "<init>", "(Ljava/io/InputStream;)V");
-                code.addAstore(nextLocalIndex);
+                isCodeorFunc().addNew("java/util/Scanner");
+                isCodeorFunc().addOpcode(Opcode.DUP);
+                isCodeorFunc().addGetstatic("java/lang/System", "in", "Ljava/io/InputStream;");
+                isCodeorFunc().addInvokespecial("java/util/Scanner", "<init>", "(Ljava/io/InputStream;)V");
+                isCodeorFunc().addAstore(nextLocalIndex);
                 localVarIndex.put(scanner, nextLocalIndex++);
                 localVarType.put(scanner, "str");
                 localVarStartPc.put(scanner, code.currentPc());
@@ -984,11 +1020,11 @@ public class SimplifyCompiler extends SimplifyBaseListener {
                 //Simplify requires readInput(String), so prompt string before getting user input
                 SimplifyParser.ReadInputExprContext readInput = readCtx.readInputExpr();
                 String prompt = readInput.String().getText().substring(1, readInput.String().getText().length() - 1);
-                code.addGetstatic("java/lang/System", "out", "Ljava/io/PrintStream;");
-                code.addLdc(prompt);
-                code.addInvokevirtual("java/io/PrintStream", "print", "(Ljava/lang/String;)V");
-                code.addAload(localVarIndex.get(scanner));
-                code.addInvokevirtual("java/util/Scanner", "nextLine", "()Ljava/lang/String;");
+                isCodeorFunc().addGetstatic("java/lang/System", "out", "Ljava/io/PrintStream;");
+                isCodeorFunc().addLdc(prompt);
+                isCodeorFunc().addInvokevirtual("java/io/PrintStream", "print", "(Ljava/lang/String;)V");
+                isCodeorFunc().addAload(localVarIndex.get(scanner));
+                isCodeorFunc().addInvokevirtual("java/util/Scanner", "nextLine", "()Ljava/lang/String;");
             }
         }else if(ctx instanceof SimplifyParser.EmptyArrExprContext || ctx instanceof SimplifyParser.ArrExprContext){
             generateArray(ctx);
@@ -998,6 +1034,20 @@ public class SimplifyCompiler extends SimplifyBaseListener {
             generateMethodExpr(methodCtx);
         }else if(ctx instanceof SimplifyParser.IndexAccessExprContext indexCtx){
             generateIndexExpr(indexCtx);
+        }else if(ctx instanceof SimplifyParser.FunctionExprContext funcCtx){
+            SimplifyParser.FuncExprContext funcCall = funcCtx.funcExpr();
+            String funcInfo = funcReturnType.get(funcCall.ID().getText()); //Class:FuncName:ReturnType
+            String[] infoList = funcInfo.split(":");
+            List<SimplifyParser.ExpressionContext> args =  funcCall.expression();
+            StringBuilder argBuilder = new StringBuilder("(");
+            for(SimplifyParser.ExpressionContext argCtx : args){
+                generateExpr(argCtx);
+                String exprType = getExprType(argCtx);
+                argBuilder.append(getDescriptor(exprType));
+            }
+            argBuilder.append(")");
+            argBuilder.append(getDescriptor(infoList[2]));
+            isCodeorFunc().addInvokestatic("Main", funcCall.ID().getText(), argBuilder.toString());
         }
     }
 
@@ -1031,37 +1081,37 @@ public class SimplifyCompiler extends SimplifyBaseListener {
 
             String elemType = type.substring(4, type.length() - 1);
             if(curVar.get(0).equals("Global Scope")){
-                code.addGetstatic("Main", id, getDescriptor(type));
+                isCodeorFunc().addGetstatic("Main", id, getDescriptor(type));
             }else{
-                code.addAload(idIndex);
+                isCodeorFunc().addAload(idIndex);
             }
             if(indexCtx.expression() instanceof SimplifyParser.IdExprContext idExprCtx){
                 ArrayList<Object> value = getVariableInfo(currentScope, idExprCtx.getText());
                 if(value.get(0).equals("Global Scope")){
-                    code.addGetstatic("Main", idExprCtx.getText(), getDescriptor(value.get(3).toString()));
+                    isCodeorFunc().addGetstatic("Main", idExprCtx.getText(), getDescriptor(value.get(3).toString()));
                 }else{
                     int idLocalIndex = Integer.parseInt(value.get(2).toString());
-                    code.addIload(idLocalIndex);
+                    isCodeorFunc().addIload(idLocalIndex);
                 }
             }else{
-                code.addIconst(index);
+                isCodeorFunc().addIconst(index);
             }
-            code.addInvokevirtual("java/util/ArrayList","get","(I)Ljava/lang/Object;");
+            isCodeorFunc().addInvokevirtual("java/util/ArrayList","get","(I)Ljava/lang/Object;");
             switch(elemType){
                 case "str":
-                    code.addCheckcast("java/lang/String");
+                    isCodeorFunc().addCheckcast("java/lang/String");
                     break;
                 case "num":
-                    code.addCheckcast("java/lang/Integer");
-                    code.addInvokevirtual("java/lang/Integer","intValue","()I");
+                    isCodeorFunc().addCheckcast("java/lang/Integer");
+                    isCodeorFunc().addInvokevirtual("java/lang/Integer","intValue","()I");
                     break;
                 case "dec":
-                    code.addCheckcast("java/lang/Double");
-                    code.addInvokevirtual("java/lang/Double","doubleValue","()D");
+                    isCodeorFunc().addCheckcast("java/lang/Double");
+                    isCodeorFunc().addInvokevirtual("java/lang/Double","doubleValue","()D");
                     break;
                 case "bool":
-                    code.addCheckcast("java/lang/Boolean");
-                    code.addInvokevirtual("java/lang/Boolean","booleanValue","()Z");
+                    isCodeorFunc().addCheckcast("java/lang/Boolean");
+                    isCodeorFunc().addInvokevirtual("java/lang/Boolean","booleanValue","()Z");
                     break;
             }
         }else if(type.equals("dict")){
@@ -1081,21 +1131,21 @@ public class SimplifyCompiler extends SimplifyBaseListener {
             }
             Object value =  curDict.get(indexString);
             if(curVar.get(0).equals("Global Scope")){
-                code.addGetstatic("Main", id, getDescriptor(type));
+                isCodeorFunc().addGetstatic("Main", id, getDescriptor(type));
             }else{
-                code.addAload(idIndex);
+                isCodeorFunc().addAload(idIndex);
             }
-            code.addLdc(indexString.substring(1,  indexString.length() - 1));
-            code.addInvokevirtual("java/util/HashMap", "get", "(Ljava/lang/Object;)Ljava/lang/Object;");
-            code.addInvokevirtual("java/lang/Object", "toString", "()Ljava/lang/String;");
+            isCodeorFunc().addLdc(indexString.substring(1,  indexString.length() - 1));
+            isCodeorFunc().addInvokevirtual("java/util/HashMap", "get", "(Ljava/lang/Object;)Ljava/lang/Object;");
+            isCodeorFunc().addInvokevirtual("java/lang/Object", "toString", "()Ljava/lang/String;");
             if(value instanceof Integer){
-                code.addInvokestatic("java/lang/Integer","parseInt","(Ljava/lang/String;)I");
+                isCodeorFunc().addInvokestatic("java/lang/Integer","parseInt","(Ljava/lang/String;)I");
             }else if(value instanceof Double){
-                code.addInvokestatic("java/lang/Double","parseDouble","(Ljava/lang/String;)D");
-                code.addInvokestatic("java/lang/Double","valueOf","(D)Ljava/lang/Double;");
+                isCodeorFunc().addInvokestatic("java/lang/Double","parseDouble","(Ljava/lang/String;)D");
+                isCodeorFunc().addInvokestatic("java/lang/Double","valueOf","(D)Ljava/lang/Double;");
             }else if(value instanceof Boolean){
-                code.addInvokestatic("java/lang/Boolean","parseBoolean","(Ljava/lang/String;)Z");
-                code.addInvokestatic("java/lang/Boolean","valueOf","(Z)Ljava/lang/Boolean;");
+                isCodeorFunc().addInvokestatic("java/lang/Boolean","parseBoolean","(Ljava/lang/String;)Z");
+                isCodeorFunc().addInvokestatic("java/lang/Boolean","valueOf","(Z)Ljava/lang/Boolean;");
             }
         }
     }
@@ -1236,19 +1286,18 @@ public class SimplifyCompiler extends SimplifyBaseListener {
 
         int index = Integer.parseInt(curVar.get(2).toString());
         if(curVar.get(0).equals("Global Scope")){
-            code.addGetstatic("Main", idName, getDescriptor(curVar.get(3).toString()));
+            isCodeorFunc().addGetstatic("Main", idName, getDescriptor(curVar.get(3).toString()));
         }else{
-            code.addAload(index);
+            isCodeorFunc().addAload(index);
         }
         if(methodName.equals("length")){ //String method
-            code.addInvokevirtual("java/lang/String", "length", "()I");
+            isCodeorFunc().addInvokevirtual("java/lang/String", "length", "()I");
         }else if(methodName.equals("size") && idType.equals("dict")){
-            code.addInvokevirtual("java/util/HashMap", "size", "()I");
+            isCodeorFunc().addInvokevirtual("java/util/HashMap", "size", "()I");
         }else if(methodName.equals("key")){
-            code.addInvokeinterface("java/util/Map", "keySet", "()Ljava/util/Set", 1);
-            code.addInvokespecial("java/util/ArrayList", "<init>", "(Ljava/util/Collection;)V");
+            isCodeorFunc().addInvokevirtual("java/util/HashMap", "keySet", "()Ljava/util/Set;");
         }else if(methodName.equals("size") && idType.startsWith("arr")){
-            code.addInvokevirtual("java/util/ArrayList", "size", "()I");
+            isCodeorFunc().addInvokevirtual("java/util/ArrayList", "size", "()I");
         }else if(methodName.equals("addItem")){
             SimplifyParser.AddDictItemExprContext addCtx = (SimplifyParser.AddDictItemExprContext) ctx.expression();
             SimplifyParser.ExpressionContext expr = addCtx.expression();
@@ -1332,37 +1381,37 @@ public class SimplifyCompiler extends SimplifyBaseListener {
             if(boolCtx.expression(0) instanceof SimplifyParser.IdExprContext idExpr){
                 ArrayList<Object> curVar = getVariableInfo(currentScope, idExpr.getText());
                 if(curVar.get(0).equals("Global Scope")){
-                    code.addGetstatic("Main", idExpr.getText(), getDescriptor(curVar.get(3).toString()));
+                    isCodeorFunc().addGetstatic("Main", idExpr.getText(), getDescriptor(curVar.get(3).toString()));
                 }else{
                     int index = Integer.parseInt(curVar.get(2).toString());
-                    code.addIload(index);
+                    isCodeorFunc().addIload(index);
                 }
             }else if(leftBool){
-                code.addIconst(1);
+                isCodeorFunc().addIconst(1);
             }else{
-                code.addIconst(0);
+                isCodeorFunc().addIconst(0);
             }
 
             //Print bytecode for right expression
             if(boolCtx.expression(1) instanceof SimplifyParser.IdExprContext idExpr){
                 ArrayList<Object> curVar = getVariableInfo(currentScope, idExpr.getText());
                 if(curVar.get(0).equals("Global Scope")){
-                    code.addGetstatic("Main", idExpr.getText(), getDescriptor(curVar.get(3).toString()));
+                    isCodeorFunc().addGetstatic("Main", idExpr.getText(), getDescriptor(curVar.get(3).toString()));
                 }else{
                     int index = Integer.parseInt(curVar.get(2).toString());
-                    code.addIload(index);
+                    isCodeorFunc().addIload(index);
                 }
             }else if(rightBool){
-                code.addIconst(1);
+                isCodeorFunc().addIconst(1);
             }else{
-                code.addIconst(0);
+                isCodeorFunc().addIconst(0);
             }
 
             //Print booleana operator
             if(boolCtx.boolOp().getText().equals("|")){
-                code.addOpcode(Bytecode.IOR);
+                isCodeorFunc().addOpcode(Bytecode.IOR);
             }else{
-                code.addOpcode(Bytecode.IAND);
+                isCodeorFunc().addOpcode(Bytecode.IAND);
             }
         }
     }
@@ -1768,7 +1817,7 @@ public class SimplifyCompiler extends SimplifyBaseListener {
                 }
                 return "num";
             }else if(method.equals("size")){ //process size method for array and dictionary
-                if(!type.equals("dict") || !type.startsWith("arr")){
+                if(!type.equals("dict") && !type.startsWith("arr")){
                     System.err.println("Semantic Error at line " + ctx.start.getLine() + ": Complex type Method '" + method +"' cannot be called on variable '" + varName + "' of type " + type);
                     return "Invalid";
                 }
@@ -1823,6 +1872,11 @@ public class SimplifyCompiler extends SimplifyBaseListener {
                     return "Invalid";
                 }
             }
+        }else if(ctx instanceof SimplifyParser.FunctionExprContext funcCtx){
+            SimplifyParser.FuncExprContext methodCall = funcCtx.funcExpr();
+            String funcType = funcReturnType.get(methodCall.ID().getText()); //return a string in this format class:funcName:returnType
+            String[] tmp = funcType.split(":");
+            return tmp[2];
         }else {
             return "Invalid";
         }
@@ -1945,43 +1999,18 @@ public class SimplifyCompiler extends SimplifyBaseListener {
             setVariableValue(currentScope, id, values);
 
             //Generate bytecode
-            code.addAload(idIndex);
+            if(curVar.get(0).equals("Global Scope")){
+                code.addGetstatic("Main", ctx.ID().getText(), getDescriptor(curVar.get(3).toString()));
+            }else{
+                code.addAload(idIndex);
+            }
             if(ctx.expression(0) instanceof  SimplifyParser.IdExprContext){
                 int idLocalIndex = localVarIndex.get(ctx.expression(0).getText());
                 code.addIload(idLocalIndex);
             }else{
                 code.addIconst(index);
             }
-            if(ctx.expression(1) instanceof SimplifyParser.IdExprContext){
-                int idLocalIndex = localVarIndex.get(ctx.expression(1).getText());
-                switch (exprType){
-                    case "str"  -> code.addAload(idLocalIndex);
-                    case "num", "bool"  -> code.addIload(idLocalIndex);
-                    case "dec"  -> code.addDload(idLocalIndex);
-                }
-            }else{
-                switch(exprType){
-                    case "str":
-                        String value = exprValue.getText().substring(1, exprValue.getText().length() - 1);
-                        code.addLdc(value);
-                        break;
-                    case "num":
-                        int num = Integer.parseInt(exprValue.getText());
-                        code.addIconst(num);
-                        code.addInvokestatic("java/lang/Integer","valueOf","(I)Ljava/lang/Integer;");
-                        break;
-                    case "dec":
-                        double dec = Double.parseDouble(exprValue.getText());
-                        code.addLdc2w(dec);
-                        code.addInvokestatic("java/lang/Double","valueOf","(D)Ljava/lang/Double;");
-                        break;
-                    case "bool":
-                        int isTrue =  exprValue.getText().equals("True") ? 1 : 0;
-                        code.addIconst(isTrue);
-                        code.addInvokestatic("java/lang/Boolean","valueOf","(Z)Ljava/lang/Boolean;");
-                        break;
-                }
-            }
+            generateExpr(ctx.expression(1));
             code.addInvokevirtual("java/util/ArrayList", "set", "(ILjava/lang/Object;)Ljava/lang/Object;");
             code.addOpcode(Opcode.POP);
         }else if(type.equals("dict")){
@@ -2022,40 +2051,13 @@ public class SimplifyCompiler extends SimplifyBaseListener {
 
             //Generate bytecode
             String indexStr = keyIndex.substring(1, ctx.expression(0).getText().length() - 1);
-            code.addAload(idIndex);
-            if(ctx.expression(0) instanceof SimplifyParser.IdExprContext idExprCtx){
-                int idIndexStr = localVarIndex.get(ctx.expression(0).getText());
-                code.addAload(idIndexStr);
+            if(curVar.get(0).equals("Global Scope")){
+                code.addGetstatic("Main", ctx.ID().getText(), getDescriptor(curVar.get(3).toString()));
             }else{
-                code.addLdc(indexStr);
+                code.addAload(idIndex);
             }
-            if(ctx.expression(1) instanceof SimplifyParser.IdExprContext){
-                int idLocalIndex = localVarIndex.get(ctx.expression(1).getText());
-                switch (exprType){
-                    case "str"  -> code.addAload(idLocalIndex);
-                    case "num", "bool"  -> code.addIload(idLocalIndex);
-                    case "dec"  -> code.addDload(idLocalIndex);
-                }
-            }else{
-                switch (exprType){
-                    case "str":
-                        code.addLdc(exprValue.getText().substring(1, exprValue.getText().length() - 1));
-                        break;
-                    case "num":
-                        code.addIconst(Integer.parseInt(exprValue.getText()));
-                        code.addInvokestatic("java/lang/Integer", "valueOf", "(I)Ljava/lang/Integer;");
-                        break;
-                    case "dec":
-                        code.addLdc2w(Double.parseDouble(exprValue.getText()));
-                        code.addInvokestatic("java/lang/Double", "valueOf", "(D)Ljava/lang/Double;");
-                        break;
-                    case "bool":
-                        int isTrue = exprValue.getText().equals("True") ? 1 : 0;
-                        code.addIconst(isTrue);
-                        code.addInvokestatic("java/lang/Boolean", "valueOf", "(Z)Ljava/lang/Boolean;");
-                        break;
-                }
-            }
+            generateExpr(ctx.expression(0));
+            generateExpr(ctx.expression(1));
             code.addInvokevirtual("java/util/HashMap", "put", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
             code.addOpcode(Opcode.POP);
         }else{
@@ -2064,13 +2066,14 @@ public class SimplifyCompiler extends SimplifyBaseListener {
     }
 
     private boolean CompareType(String varType, String exprType, String varName){
+        if(varType.equals(exprType)){
+            return true;
+        }
         if(varType.startsWith("arr")) {
             String type = varType.substring(0, 3);
             if(type.equals(exprType)) {
                 return true;
             }
-        }else if(varType.equals(exprType)){
-            return true;
         }
         System.err.println("Type mismatch in declaration of '" + varName + "': expected " + varType + ", found " + exprType);
         return false;
@@ -2144,10 +2147,12 @@ public class SimplifyCompiler extends SimplifyBaseListener {
             }
         }else if(ctx instanceof SimplifyParser.MethodCallExprContext methodCtx){
             text = evaluateExpr(methodCtx.expression()).toString();
-            if(text.equals("Invalid")){
-                return "Invalid";
-            }
+        }else if(ctx instanceof SimplifyParser.NumOpExprContext
+              || ctx instanceof SimplifyParser.BoolOpExprContext
+              || ctx instanceof SimplifyParser.CompOpExprContext){
+            text = evaluateExpr(ctx).toString();
         }
+
         int line = ctx.start.getLine();
         switch(elemType){
             case "str":
@@ -2288,6 +2293,11 @@ public class SimplifyCompiler extends SimplifyBaseListener {
             return mainCode;
         }
     }
+
+    private Bytecode isCodeorFunc(){
+        return inFunction ? funcCode : code;
+    }
+
 
     //Generate a Main class that print hello world if no parse tree
     public Bytecode defaultProgram(){

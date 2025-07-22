@@ -12,7 +12,7 @@
 1. java -jar lib/antlr-4.13.2-complete.jar -o src/antlr -package antlr src/antlr/Simplify.g4
 2. javac -cp "lib/antlr-4.13.2-complete.jar;lib/javassist.jar" -d out src/antlr/*.java src/Main.java src/ErrorListener/* src/symbols/*.java src/jvm_bytecode/*
 3. Remove-Item -Path out/jvm_output/Main.class -Force (Window)
-4. java -cp "lib/antlr-4.13.2-complete.jar;lib/javassist.jar;out" Main stage src/SingleFuncComp/Test.txt
+4. java -cp "lib/antlr-4.13.2-complete.jar;lib/javassist.jar;out" Main stage src/Language_Definition/array.txt
 5. javap -c -v -classpath out/jvm_output Main  (for reading bytecode and localVarTable)
 Note: if no stage in command line flag, default stage is "codegen"
  */

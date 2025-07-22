@@ -1,7 +1,8 @@
 #counter function using while loop to count down the time and return a text string
 func str counter(num time){
     w_loop(time to 0) exist{
-        result("Current time: " + time);
+        result("Current time: ");
+        result(time);
     }
     return "Time up!";
 }
